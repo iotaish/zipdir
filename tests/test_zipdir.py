@@ -883,6 +883,18 @@ class TestOutputPathResolution:
         with zipfile.ZipFile(out2, "r") as zf:
             assert set(zf.namelist()) == {"app.py"}
 
+        # Third run: another archive is created while proj.zip AND proj_<ts>.zip both exist,
+        # verifying full dynamic idempotency: neither prior archive (standard or custom timestamp)
+        # is engulfed into the new ZIP!
+        out3 = source / "proj_custom_arbitrary_timestamp.zip"
+        cfg3 = PackagerConfig(
+            source=source, output=out3, name="proj", preset_name="clean", flat=True
+        )
+        ZipPackager(cfg3).package()
+        assert out3.exists()
+        with zipfile.ZipFile(out3, "r") as zf:
+            assert set(zf.namelist()) == {"app.py"}
+
     def test_bare_o_cli_normalization(self, tmp_path: Path) -> None:
         """Verifies that bare `-o` at end of args or before another flag normalizes to `""`."""
         from typer.testing import CliRunner

@@ -153,13 +153,21 @@ class ZipPackager(IPackager):
             case True:
                 return True
             case False:
-                match (
-                    resolved.parent == output_resolved.parent
-                    and resolved.name == f"{self.config.name}.zip"
-                ):
+                match resolved.parent == output_resolved.parent:
                     case True:
-                        return output_resolved.name.startswith(
-                            f"{self.config.name}_"
-                        ) and output_resolved.name.endswith(".zip")
+                        fname = resolved.name
+                        target_stems = {self.config.name, output_resolved.stem}
+                        if "_" in output_resolved.stem:
+                            target_stems.add(output_resolved.stem.rsplit("_", 1)[0])
+
+                        for stem in target_stems:
+                            match fname == f"{stem}.zip" or (
+                                fname.startswith(f"{stem}_") and fname.endswith(".zip")
+                            ):
+                                case True:
+                                    return True
+                                case False:
+                                    pass
                     case False:
-                        return False
+                        pass
+                return False
