@@ -18,14 +18,13 @@ from zipdir.evaluator.strategies import (
     RemapContext,
     RescueTransition,
 )
-from zipdir.interfaces.models import DIgnoreRule
-from zipdir.models import IgnoreRule
+from zipdir.models import IgnoreRule, ScopedRule
 
 
 def evaluate_path(
     rel_path: PurePosixPath,
     is_dir: bool,
-    rules: Sequence[DIgnoreRule],
+    rules: Sequence[IgnoreRule | str | ScopedRule],
 ) -> tuple[bool, PurePosixPath | None, IgnoreRule | None]:
     """Evaluate path against rules, returning (is_excluded, arc_rel_path, matched_rule)."""
     res = PathEvaluator(rules).evaluate(rel_path, is_dir=is_dir)
