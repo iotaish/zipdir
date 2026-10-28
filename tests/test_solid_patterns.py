@@ -1,4 +1,4 @@
-"""Unit tests verifying interfaces/ package separation, progressive inheritance (OCP), TemplateMethod decomposition, match usage, and Strategy/Bridge patterns."""
+"""Unit tests verifying interfaces/ package separation, progressive inheritance (OCP), LSP signature parity, anti-pattern prohibitions, TemplateMethod decomposition, match usage, and Strategy/Bridge patterns."""
 
 import ast
 import inspect
@@ -40,34 +40,50 @@ import zipdir.presets.local
 import zipdir.ui.base
 import zipdir.ui.verbose
 from zipdir import (
+    AbsoluteOutputStrategy,
     ArchiveRootRemapStrategy,
+    BareParentOutputStrategy,
     ConsoleReporter,
+    CwdRelativeOutputStrategy,
     EvaluationResult,
+    EvaluationState,
+    ExcludeTransition,
     ExileRemapStrategy,
     GlobExpression,
+    IArchiveEntryWriter,
     IGlobCompiler,
     IgnoreRule,
     IOutputResolver,
+    IOutputTargetStrategy,
     IPackager,
     IPathEvaluator,
     IPresetCatalog,
     IRemapStrategy,
     IReporter,
     IRuleInterpreter,
+    IRuleSqueezer,
+    IRuleTransition,
+    ISqueezeStrategy,
     LocalScopeRemapStrategy,
     OutputResolver,
     OverwriteSqueezeStrategy,
     PackagerConfig,
     ParentClimbRemapStrategy,
+    ParentRelativeOutputStrategy,
     ParsedRule,
     PathEvaluator,
     PreserveHierarchyRemapStrategy,
     PresetCatalog,
     PresetModel,
+    RedeleteTransition,
+    RegularFileArchiveWriter,
     RemapContext,
+    RescueTransition,
     ResolvedOutput,
+    RootDirArchiveWriter,
     RuleInterpreter,
     RuleKind,
+    SymlinkArchiveWriter,
     TargetedRedeleteSqueezeStrategy,
     ZipPackager,
     compile_rule,
@@ -75,7 +91,7 @@ from zipdir import (
 
 
 class TestInterfacesDirectoryAndProgressiveInheritance:
-    """Verifies dedicated interfaces/ directory separation and progressive inheritance (Sections 3.2, 3.4, 3.5, 4.6, 8.1)."""
+    """Verifies dedicated interfaces/ directory separation, LSP signature parity, anti-pattern prohibitions, and progressive inheritance (Sections 3.2, 3.3, 3.4, 3.5, 4.6, 7.1-7.5, 8.1)."""
 
     def test_interfaces_package_files_are_separated_and_import_no_concretes(self) -> None:
         """All interfaces reside under zipdir/interfaces/*.py and import only interfaces or models."""
@@ -208,6 +224,7 @@ class TestInterfacesDirectoryAndProgressiveInheritance:
             zipdir.interpreter.base.RuleInterpreter,
         )
         assert issubclass(zipdir.interpreter.base.RuleInterpreter, IRuleInterpreter)
+        assert issubclass(zipdir.interpreter.squeezed.RuleInterpreter, IRuleSqueezer)
 
         # 3. evaluator: pruning -> remapped -> base -> IPathEvaluator
         assert PathEvaluator is zipdir.evaluator.pruning.PathEvaluator
@@ -266,6 +283,124 @@ class TestInterfacesDirectoryAndProgressiveInheritance:
         )
         assert issubclass(zipdir.packager.base.ZipPackager, IPackager)
 
+    def test_lsp_method_signature_parity_between_interfaces_and_concretes(self) -> None:
+        """Verifies that all concrete classes and strategies match their I* interface method signatures (Section 3.3 LSP)."""
+        pairs: list[tuple[type, type, list[str]]] = [
+            (IGlobCompiler, GlobExpression, ["interpret", "compile"]),
+            (
+                IRuleInterpreter,
+                zipdir.interpreter.base.RuleInterpreter,
+                ["parse_components", "interpret", "compile_all"],
+            ),
+            (
+                IRuleSqueezer,
+                RuleInterpreter,
+                ["parse_components", "interpret", "compile_all", "squeeze"],
+            ),
+            (ISqueezeStrategy, OverwriteSqueezeStrategy, ["apply"]),
+            (ISqueezeStrategy, TargetedRedeleteSqueezeStrategy, ["apply"]),
+            (IRuleTransition, ExcludeTransition, ["apply"]),
+            (IRuleTransition, RescueTransition, ["apply"]),
+            (IRuleTransition, RedeleteTransition, ["apply"]),
+            (IRemapStrategy, PreserveHierarchyRemapStrategy, ["matches", "remap"]),
+            (IRemapStrategy, ArchiveRootRemapStrategy, ["matches", "remap"]),
+            (IRemapStrategy, LocalScopeRemapStrategy, ["matches", "remap"]),
+            (IRemapStrategy, ParentClimbRemapStrategy, ["matches", "remap"]),
+            (IRemapStrategy, ExileRemapStrategy, ["matches", "remap"]),
+            (IPathEvaluator, PathEvaluator, ["evaluate", "should_prune"]),
+            (IOutputTargetStrategy, BareParentOutputStrategy, ["matches", "classify"]),
+            (IOutputTargetStrategy, AbsoluteOutputStrategy, ["matches", "classify"]),
+            (IOutputTargetStrategy, CwdRelativeOutputStrategy, ["matches", "classify"]),
+            (IOutputTargetStrategy, ParentRelativeOutputStrategy, ["matches", "classify"]),
+            (
+                IOutputResolver,
+                OutputResolver,
+                ["normalize_cli_args", "resolve_with_metadata", "resolve"],
+            ),
+            (
+                IPresetCatalog,
+                PresetCatalog,
+                [
+                    "parse_file",
+                    "load_all",
+                    "linearize_presets",
+                    "discover_sub_zipignores",
+                    "resolve_cascade",
+                ],
+            ),
+            (
+                IReporter,
+                ConsoleReporter,
+                ["print_presets", "print_dry_run", "print_summary"],
+            ),
+            (IArchiveEntryWriter, RootDirArchiveWriter, ["matches", "write"]),
+            (IArchiveEntryWriter, SymlinkArchiveWriter, ["matches", "write"]),
+            (IArchiveEntryWriter, RegularFileArchiveWriter, ["matches", "write"]),
+            (
+                IPackager,
+                ZipPackager,
+                ["collect_members", "write_archive", "package"],
+            ),
+        ]
+        for iface_cls, concrete_cls, method_names in pairs:
+            assert issubclass(concrete_cls, iface_cls)
+            for m_name in method_names:
+                iface_sig = inspect.signature(getattr(iface_cls, m_name))
+                concrete_sig = inspect.signature(getattr(concrete_cls, m_name))
+                assert list(iface_sig.parameters.keys()) == list(concrete_sig.parameters.keys()), (
+                    f"LSP parameter mismatch on {concrete_cls.__name__}.{m_name}: "
+                    f"expected {list(iface_sig.parameters.keys())}, got {list(concrete_sig.parameters.keys())}"
+                )
+
+    def test_prohibited_antipatterns_absent_across_codebase(self) -> None:
+        """Verifies that abc.ABC, @abstractmethod, @classmethod, @staticmethod, and @property are not used (Section 7)."""
+        all_modules = [
+            zipdir.models,
+            zipdir.interfaces.glob,
+            zipdir.interfaces.interpreter,
+            zipdir.interfaces.evaluator,
+            zipdir.interfaces.output,
+            zipdir.interfaces.presets,
+            zipdir.interfaces.ui,
+            zipdir.interfaces.packager,
+            zipdir.glob.base,
+            zipdir.glob.gitignore,
+            zipdir.interpreter.base,
+            zipdir.interpreter.squeezed,
+            zipdir.interpreter.strategies,
+            zipdir.evaluator.base,
+            zipdir.evaluator.remapped,
+            zipdir.evaluator.pruning,
+            zipdir.evaluator.strategies,
+            zipdir.output.base,
+            zipdir.output.fallback,
+            zipdir.output.strategies,
+            zipdir.presets.base,
+            zipdir.presets.linearized,
+            zipdir.presets.local,
+            zipdir.presets.cascade,
+            zipdir.ui.base,
+            zipdir.ui.verbose,
+            zipdir.packager.base,
+            zipdir.packager.pruned,
+            zipdir.packager.phagocytic,
+            zipdir.packager.atomic,
+            zipdir.packager.writers,
+        ]
+        forbidden_decorators = {"abstractmethod", "classmethod", "staticmethod", "property"}
+        for mod in all_modules:
+            source = inspect.getsource(mod)
+            tree = ast.parse(source)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module == "abc":
+                    pytest.fail(f"{mod.__name__} must not import from abc")
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    for dec in node.decorator_list:
+                        dec_name = dec.id if isinstance(dec, ast.Name) else getattr(dec, "attr", "")
+                        assert dec_name not in forbidden_decorators, (
+                            f"Prohibited decorator @{dec_name} found in {mod.__name__}.{node.name}"
+                        )
+
 
 class TestStructuralPatternMatchingUsage:
     """Verifies active utilization of Python 3.10+ match statements across the codebase."""
@@ -319,6 +454,10 @@ class TestDataModelInvariants:
             EvaluationResult(True, PurePosixPath("a.txt"), None)
         with pytest.raises(ValueError, match="included path must have an arc_path"):
             EvaluationResult(False, None, None)
+
+        res = EvaluationResult(False, PurePosixPath("a.txt"), None)
+        assert res.as_tuple() == (False, PurePosixPath("a.txt"), None)
+        assert EvaluationState().is_excluded is False
 
     def test_resolved_output_invariants(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="explicit .zip path cannot fall back"):
