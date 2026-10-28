@@ -50,7 +50,12 @@ class IRuleInterpreter:
     def interpret(self, line: str, scope: PurePosixPath = PurePosixPath()) -> IgnoreRule | None:
         raise NotImplementedError
 
-    def compile_all(self, rules: Sequence[str | ScopedRule | IgnoreRule]) -> tuple[IgnoreRule, ...]:
+    def compile_all(
+        self,
+        rules: Sequence[str | ScopedRule | IgnoreRule],
+        *,
+        squeeze: bool = False,
+    ) -> tuple[IgnoreRule, ...]:
         raise NotImplementedError
 
 

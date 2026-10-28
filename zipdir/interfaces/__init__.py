@@ -4,7 +4,6 @@ from zipdir.interfaces.evaluator import (
     IPathEvaluator,
     IRemapStrategy,
     IRuleTransition,
-    RemapContext,
 )
 from zipdir.interfaces.glob import IGlobCompiler
 from zipdir.interfaces.interpreter import (
@@ -23,8 +22,10 @@ from zipdir.interfaces.packager import (
 )
 from zipdir.interfaces.presets import IPresetCatalog
 from zipdir.interfaces.ui import IReporter
+from zipdir.models import EvaluationState, RemapContext
 
 __all__ = [
+    "EvaluationState",
     "IArchiveEntryWriter",
     "IGlobCompiler",
     "IOutputResolver",

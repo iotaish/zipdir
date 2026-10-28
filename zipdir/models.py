@@ -1,7 +1,7 @@
 """Concrete domain data models and value helpers for zipdir using Pydantic."""
 
 import re
-from collections.abc import Iterator
+from collections.abc import Sequence
 from enum import Enum
 from pathlib import Path, PurePosixPath
 
@@ -144,6 +144,49 @@ class IgnoreRule(BaseModel):
             raise ValueError("IgnoreRule invariant violated: scope must be a relative path")
 
 
+class EvaluationState(BaseModel):
+    """Mutable state tracking exclusion, rescue, and shallowest excluded ancestor during evaluation."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    is_excluded: bool = False
+    shallowest_excluded_ancestor: PurePosixPath | None = None
+    excluded_by: IgnoreRule | None = None
+    rescued_by: IgnoreRule | None = None
+
+
+class RemapContext(BaseModel):
+    """Coordinate parameters passed to IRemapStrategy implementations."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    rel_path: PurePosixPath
+    rescued_by: IgnoreRule
+    shallowest_excluded_ancestor: PurePosixPath | None = None
+    sub_path: PurePosixPath
+    anchor_parent: PurePosixPath
+
+    def __init__(
+        self,
+        rel_path: PurePosixPath | None = None,
+        rescued_by: IgnoreRule | None = None,
+        shallowest_excluded_ancestor: PurePosixPath | None = None,
+        sub_path: PurePosixPath | None = None,
+        anchor_parent: PurePosixPath | None = None,
+        **data: object,
+    ) -> None:
+        if rel_path is not None:
+            data.setdefault("rel_path", rel_path)
+        if rescued_by is not None:
+            data.setdefault("rescued_by", rescued_by)
+        data.setdefault("shallowest_excluded_ancestor", shallowest_excluded_ancestor)
+        if sub_path is not None:
+            data.setdefault("sub_path", sub_path)
+        if anchor_parent is not None:
+            data.setdefault("anchor_parent", anchor_parent)
+        super().__init__(**data)
+
+
 class EvaluationResult(BaseModel):
     """Outcome of evaluating a path against a compiled rule set."""
 
@@ -179,10 +222,9 @@ class EvaluationResult(BaseModel):
             case _:
                 pass
 
-    def __iter__(self) -> Iterator[bool | PurePosixPath | IgnoreRule | None]:
-        yield self.is_excluded
-        yield self.arc_path
-        yield self.matched_rule
+    def as_tuple(self) -> tuple[bool, PurePosixPath | None, IgnoreRule | None]:
+        """Return (is_excluded, arc_path, matched_rule) tuple without overriding BaseModel.__iter__."""
+        return self.is_excluded, self.arc_path, self.matched_rule
 
 
 class ResolvedOutput(BaseModel):
@@ -248,7 +290,7 @@ class PackagerConfig(BaseModel):
     output: Path
     name: str = Field(min_length=1)
     preset_name: str
-    rules: list[str | ScopedRule | IgnoreRule] = Field(default_factory=list)
+    rules: Sequence[str | ScopedRule | IgnoreRule] = Field(default_factory=tuple)
     compression: int = Field(default=6, ge=0, le=9)
     flat: bool = False
     dry_run: bool = False
