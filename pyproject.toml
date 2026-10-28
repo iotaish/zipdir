@@ -31,5 +31,8 @@ line-length = 100
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]
 
+[tool.pyright]
+pythonVersion = "3.15"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
