@@ -17,12 +17,12 @@ DEFAULT_PRESET_DIRS: list[Path] = [
 ]
 
 
-def _as_preset_model(preset: PresetModel | dict[str, object]) -> PresetModel:
+def _as_preset_model(preset: PresetModel | Mapping[str, object]) -> PresetModel:
     match preset:
         case PresetModel():
             return preset
-        case dict() as d:
-            return PresetModel(**d)
+        case Mapping() as d:
+            return PresetModel.model_validate(d)
         case _:
             raise TypeError(f"Invalid preset type: {type(preset)}")
 

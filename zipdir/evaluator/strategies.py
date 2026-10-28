@@ -2,61 +2,18 @@
 
 from pathlib import PurePosixPath
 
-from pydantic import BaseModel, ConfigDict
-
 from zipdir.interfaces.evaluator import (
     IRemapStrategy,
     IRuleTransition,
 )
 from zipdir.models import (
+    EvaluationState,
     IgnoreRule,
+    RemapContext,
     RuleKind,
     normalize_posix_path,
     redelete_matches_rescue,
 )
-
-
-class EvaluationState(BaseModel):
-    """Concrete mutable state tracking exclusion, rescue, and shallowest excluded ancestor."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    is_excluded: bool = False
-    shallowest_excluded_ancestor: PurePosixPath | None = None
-    excluded_by: IgnoreRule | None = None
-    rescued_by: IgnoreRule | None = None
-
-
-class RemapContext(BaseModel):
-    """Coordinate parameters passed to IRemapStrategy implementations."""
-
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
-
-    rel_path: PurePosixPath
-    rescued_by: IgnoreRule
-    shallowest_excluded_ancestor: PurePosixPath | None = None
-    sub_path: PurePosixPath
-    anchor_parent: PurePosixPath
-
-    def __init__(
-        self,
-        rel_path: PurePosixPath | None = None,
-        rescued_by: IgnoreRule | None = None,
-        shallowest_excluded_ancestor: PurePosixPath | None = None,
-        sub_path: PurePosixPath | None = None,
-        anchor_parent: PurePosixPath | None = None,
-        **data: object,
-    ) -> None:
-        if rel_path is not None:
-            data.setdefault("rel_path", rel_path)
-        if rescued_by is not None:
-            data.setdefault("rescued_by", rescued_by)
-        data.setdefault("shallowest_excluded_ancestor", shallowest_excluded_ancestor)
-        if sub_path is not None:
-            data.setdefault("sub_path", sub_path)
-        if anchor_parent is not None:
-            data.setdefault("anchor_parent", anchor_parent)
-        super().__init__(**data)
 
 
 class ExcludeTransition(IRuleTransition):
@@ -123,9 +80,7 @@ def is_rename_target(target: str) -> bool:
     """Check if target represents a file rename rather than a directory placement."""
     stripped = target.strip()
     return bool(
-        stripped
-        and not stripped.endswith("/")
-        and stripped not in (".", "..", "./", "../", "/")
+        stripped and not stripped.endswith("/") and stripped not in (".", "..", "./", "../", "/")
     )
 
 

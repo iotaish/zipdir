@@ -1,12 +1,12 @@
 """Minimal concrete ZIP packager with TemplateMethod skeleton (base stage for progressive inheritance)."""
 
+import importlib
 import os
 import stat
 import zipfile
 from collections.abc import Iterator, Sequence
 from pathlib import Path, PurePosixPath
 
-import importlib
 from zipdir.interfaces.evaluator import IPathEvaluator
 from zipdir.interfaces.packager import IArchiveEntryWriter, IPackager
 from zipdir.interfaces.ui import IReporter

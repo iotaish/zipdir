@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from typer._click.core import Context as ClickContext
 from typer.core import TyperCommand
 
 from zipdir.models import PackagerConfig, PresetModel
@@ -18,7 +19,7 @@ from zipdir.ui import ConsoleReporter, color_yellow
 class ZipdirCommand(TyperCommand):
     """Custom Typer command that normalizes bare `-o` / `--output` flags to `""` (source.parent)."""
 
-    def parse_args(self, ctx: typer.Context, args: list[str]) -> list[str]:
+    def parse_args(self, ctx: ClickContext, args: list[str]) -> list[str]:
         resolver = OutputResolver()
         normalized = resolver.normalize_cli_args(args)
         return super().parse_args(ctx, normalized)
@@ -57,12 +58,13 @@ Output path resolution (-o / positional output):
 Rule syntax (.zipignore):
   - 'out/'               # Exclude out/ directory
   - '!out/*.pdf'         # Rescue out/*.pdf and lift to exile destination (shallowest excluded parent)
-  - '{to}!out/*.pdf'     # Rescue and move to {to} relative to exile destination (e.g. 'dist!out/*.pdf')
+  - '{to}/!out/*.pdf'    # Rescue and move to directory {to}/ relative to exile destination (e.g. 'dist/!out/*.pdf')
+  - '{name}!out/file'    # Rescue and rename file to {name} at exile destination (e.g. 'final.pdf!out/report.pdf')
   - './!out/*.pdf'       # Rescue out/*.pdf keeping original directory hierarchy (階層死守)
-  - './{to}!out/*.pdf'   # Rescue and move to {to} relative to original hierarchy / local scope
-  - '/{to}!out/*.pdf'    # Rescue and move to {to} relative to archive root
+  - './{to}/!out/*.pdf'  # Rescue and move to {to}/ relative to original hierarchy / local scope
+  - '/{to}/!out/*.pdf'   # Rescue and move to {to}/ relative to archive root
   - '!!out/*.pdf'        # Re-delete item rescued via '!out/*.pdf'
-  - '!{to}!out/*.pdf'    # Re-delete item rescued targeting {to} (e.g. '!dist!out/*.pdf', '!./!out/*.pdf')
+  - '!{to}!out/*.pdf'    # Re-delete item rescued targeting {to} (e.g. '!dist/!out/*.pdf', '!./!out/*.pdf')
 """,
 )
 def package(
@@ -187,7 +189,7 @@ def package(
         output=resolved_output,
         name=archive_name,
         preset_name=effective_preset_name,
-        rules=list(combined_rules),  # type: ignore[arg-type]
+        rules=combined_rules,
         compression=compression,
         flat=flat,
         dry_run=dry_run,
@@ -211,8 +213,8 @@ def _resolve_cli_targets(
             return ".", output
         case (str() as d, None, _) if d.endswith(".zip"):
             return ".", output if output is not None else d
-        case _:
-            return directory, output if output is not None else output_path
+        case (str() as d, _, _):
+            return d, output if output is not None else output_path
 
 
 def _validate_source_dir(target_dir_str: str) -> Path:

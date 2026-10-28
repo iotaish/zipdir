@@ -1,3 +1,5 @@
+"""Minimal concrete interpreter that parses 4-component syntax and compiles .zipignore rules."""
+
 import importlib
 import re
 from collections.abc import Sequence
@@ -54,7 +56,12 @@ class RuleInterpreter(IRuleInterpreter):
             case ParsedRule() as parsed:
                 return self._build_rule(line, parsed, scope)
 
-    def compile_all(self, rules: Sequence[str | ScopedRule | IgnoreRule]) -> tuple[IgnoreRule, ...]:
+    def compile_all(
+        self,
+        rules: Sequence[str | ScopedRule | IgnoreRule],
+        *,
+        squeeze: bool = False,
+    ) -> tuple[IgnoreRule, ...]:
         """Compile a sequence of raw or scoped rules into IgnoreRule objects."""
         compiled: list[IgnoreRule] = []
         for item in rules:
