@@ -399,7 +399,7 @@ class TestBridgeAndStrategyPatterns:
         assert reporter.recorded_entries == ["hello.txt"]
 
     def test_remap_strategies_unit(self) -> None:
-        rule = compile_rule("/dist!out/a.pdf")
+        rule = compile_rule("/dist/!out/a.pdf")
         assert rule is not None
         ctx = RemapContext(
             rel_path=PurePosixPath("out/a.pdf"),
@@ -409,7 +409,7 @@ class TestBridgeAndStrategyPatterns:
             anchor_parent=PurePosixPath("."),
         )
         strat = ArchiveRootRemapStrategy()
-        assert strat.matches("/dist")
+        assert strat.matches("/dist/")
         assert strat.remap(ctx) == PurePosixPath("dist/a.pdf")
 
         for s_cls in (
@@ -439,9 +439,9 @@ class TestBridgeAndStrategyPatterns:
 
     def test_squeeze_strategies_compile_all_consistency(self) -> None:
         interpreter = RuleInterpreter()
-        raw_rules = ["out/", "!out/*.pdf", "dist!out/*.pdf", "!build!out/*.pdf"]
+        raw_rules = ["out/", "!out/*.pdf", "dist/!out/*.pdf", "!build/!out/*.pdf"]
         compiled = interpreter.compile_all(raw_rules, squeeze=True)
-        assert [r.raw for r in compiled] == ["out/", "dist!out/*.pdf", "!build!out/*.pdf"]
+        assert [r.raw for r in compiled] == ["out/", "dist/!out/*.pdf", "!build/!out/*.pdf"]
         assert isinstance(
             interpreter.squeeze_strategies[RuleKind.EXCLUDE], OverwriteSqueezeStrategy
         )

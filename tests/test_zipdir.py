@@ -80,17 +80,27 @@ class TestRuleCompiler:
 
     def test_rescue_custom_destination(self) -> None:
         """Custom remapping targets: '{to}!{pattern}'."""
-        r1 = compile_rule("dist!out/*.pdf")
+        # Directory targets require trailing slash
+        r1 = compile_rule("dist/!out/*.pdf")
         assert r1 is not None
         assert r1.kind == RuleKind.RESCUE
-        assert r1.target == "dist"
+        assert r1.target == "dist/"
         assert r1.pattern == "out/*.pdf"
 
-        r2 = compile_rule("dist/bundle!out/*.pdf")
+        r2 = compile_rule("dist/bundle/!out/*.pdf")
         assert r2 is not None
         assert r2.kind == RuleKind.RESCUE
-        assert r2.target == "dist/bundle"
+        assert r2.target == "dist/bundle/"
         assert r2.pattern == "out/*.pdf"
+
+        # Rename targets without trailing slash
+        r_rename1 = compile_rule("final.pdf!out/*.pdf")
+        assert r_rename1 is not None
+        assert r_rename1.target == "final.pdf"
+
+        r_rename2 = compile_rule("app!out/bin")
+        assert r_rename2 is not None
+        assert r_rename2.target == "app"
 
     def test_rescue_archive_root(self) -> None:
         """Archive root placement '/!{pattern}'."""
@@ -118,10 +128,10 @@ class TestRuleCompiler:
         assert r.pattern == "out/draft.pdf"
 
         # Targeted cancellations with !{to}!
-        r_dist = compile_rule("!dist!out/*.pdf")
+        r_dist = compile_rule("!dist/!out/*.pdf")
         assert r_dist is not None
         assert r_dist.kind == RuleKind.REDELETE
-        assert r_dist.target == "dist"
+        assert r_dist.target == "dist/"
         assert r_dist.pattern == "out/*.pdf"
 
         r_preserve = compile_rule("!./!out/draft.pdf")
@@ -130,11 +140,17 @@ class TestRuleCompiler:
         assert r_preserve.target == "./"
         assert r_preserve.pattern == "out/draft.pdf"
 
-        r_root = compile_rule("!/dist!out/*.pdf")
+        r_root = compile_rule("!/dist/!out/*.pdf")
         assert r_root is not None
         assert r_root.kind == RuleKind.REDELETE
-        assert r_root.target == "/dist"
+        assert r_root.target == "/dist/"
         assert r_root.pattern == "out/*.pdf"
+
+        r_rename = compile_rule("!final.pdf!out/*.pdf")
+        assert r_rename is not None
+        assert r_rename.kind == RuleKind.REDELETE
+        assert r_rename.target == "final.pdf"
+        assert r_rename.pattern == "out/*.pdf"
 
     def test_escaped_exclamation(self) -> None:
         """Escaped exclamation mark should be treated as literal character."""
@@ -200,10 +216,10 @@ class TestPathEvaluation:
         assert matched is not None and matched.kind == RuleKind.RESCUE
 
     def test_custom_destination_remapping(self) -> None:
-        """'dist!out/*.pdf' remaps to 'dist/report.pdf' at exile destination."""
+        """'dist/!out/*.pdf' remaps to 'dist/report.pdf' at exile destination."""
         rules = [
             compile_rule("out/") or pytest.fail("rule failed"),
-            compile_rule("dist!out/*.pdf") or pytest.fail("rule failed"),
+            compile_rule("dist/!out/*.pdf") or pytest.fail("rule failed"),
         ]
         is_exc, arc, matched = evaluate_path(PurePosixPath("out/report.pdf"), False, rules)
         assert not is_exc
@@ -211,17 +227,17 @@ class TestPathEvaluation:
         assert matched is not None and matched.kind == RuleKind.RESCUE
 
     def test_redelete_cancels_specific_destination(self) -> None:
-        """'!dist!out/*.pdf' cancels a prior 'dist!out/*.pdf' rescue."""
+        """'!dist/!out/*.pdf' cancels a prior 'dist/!out/*.pdf' rescue."""
         rules = [
             compile_rule("out/") or pytest.fail("rule failed"),
-            compile_rule("dist!out/*.pdf") or pytest.fail("rule failed"),
-            compile_rule("!dist!out/*.pdf") or pytest.fail("rule failed"),
+            compile_rule("dist/!out/*.pdf") or pytest.fail("rule failed"),
+            compile_rule("!dist/!out/*.pdf") or pytest.fail("rule failed"),
         ]
         is_exc, arc, matched = evaluate_path(PurePosixPath("out/report.pdf"), False, rules)
         assert is_exc
         assert arc is None
         assert matched is not None and matched.kind == RuleKind.REDELETE
-        assert matched.target == "dist"
+        assert matched.target == "dist/"
 
     def test_archive_root_remapping(self) -> None:
         """'/!out/*.pdf' places directly at archive root."""
@@ -264,8 +280,8 @@ class TestPathEvaluation:
         assert exc3
         assert arc3 is None
 
-    def test_rescue_rename_with_matching_suffix(self) -> None:
-        """When {to} has the same suffix as rescued item, it renames the file instead of appending."""
+    def test_rescue_rename_without_trailing_slash(self) -> None:
+        """When {to} lacks a trailing slash, it renames the file instead of appending inside a folder."""
         # 1. Exile destination rename: final.pdf!out/report.pdf -> final.pdf
         rules1 = [
             compile_rule("out/") or pytest.fail("rule failed"),
@@ -315,6 +331,37 @@ class TestPathEvaluation:
         assert arc5 == PurePosixPath("summary.txt")
         assert m5 is not None and m5.target == "summary.txt"
 
+        # 6. Extensionless binary rename: app!build/bin -> app
+        rules6 = [
+            compile_rule("build/") or pytest.fail("rule failed"),
+            compile_rule("app!build/bin") or pytest.fail("rule failed"),
+        ]
+        exc6, arc6, m6 = evaluate_path(PurePosixPath("build/bin"), False, rules6)
+        assert not exc6
+        assert arc6 == PurePosixPath("app")
+        assert m6 is not None and m6.target == "app"
+
+        # 7. Non-slash directory name 'dist' renames file to 'dist'
+        rules7 = [
+            compile_rule("out/") or pytest.fail("rule failed"),
+            compile_rule("dist!out/report.pdf") or pytest.fail("rule failed"),
+        ]
+        exc6, arc6, m6 = evaluate_path(PurePosixPath("out/report.pdf"), False, rules7)
+        assert not exc6
+        assert arc6 == PurePosixPath("dist")
+        assert m6 is not None and m6.target == "dist"
+
+        # 8. Redelete targeting 'dist' cancels 'dist!out/report.pdf'
+        rules8 = [
+            compile_rule("out/") or pytest.fail("rule failed"),
+            compile_rule("dist!out/report.pdf") or pytest.fail("rule failed"),
+            compile_rule("!dist!out/report.pdf") or pytest.fail("rule failed"),
+        ]
+        exc7, arc7, m7 = evaluate_path(PurePosixPath("out/report.pdf"), False, rules8)
+        assert exc7
+        assert arc7 is None
+        assert m7 is not None and m7.kind == RuleKind.REDELETE
+
 
 # ==============================================================================
 # 3. End-to-End Packaging & Integration Tests
@@ -354,7 +401,7 @@ class TestPackagerIntegration:
                 "!out/final.pdf",  # omitted prefix -> floats to exile destination (root)
                 "!out/exiled.pdf",  # omitted prefix -> floats to exile destination (root)
                 "./!out/preserved.pdf",  # ./! -> preserved inside out/
-                "dist!out/custom.pdf",  # dist! -> moved to dist/ at exile destination
+                "dist/!out/custom.pdf",  # dist/! -> moved to dist/ at exile destination
                 "!!out/draft.pdf",  # !! -> re-deleted (excluded)
                 "!docs/readme.md",  # ! -> lifted out of docs to root
             ],
@@ -416,14 +463,14 @@ class TestInterpreterComponents:
         assert res_empty == ParsedRule(RuleKind.REDELETE, "", "out/draft.pdf")
 
         # Specific {to} -> !{to}!pattern
-        res_target = interpreter.parse_components("!dist!out/*.pdf")
-        assert res_target == ParsedRule(RuleKind.REDELETE, "dist", "out/*.pdf")
+        res_target = interpreter.parse_components("!dist/!out/*.pdf")
+        assert res_target == ParsedRule(RuleKind.REDELETE, "dist/", "out/*.pdf")
 
         res_preserve = interpreter.parse_components("!./!out/draft.pdf")
         assert res_preserve == ParsedRule(RuleKind.REDELETE, "./", "out/draft.pdf")
 
-        res_root = interpreter.parse_components("!/dist!out/*.pdf")
-        assert res_root == ParsedRule(RuleKind.REDELETE, "/dist", "out/*.pdf")
+        res_root = interpreter.parse_components("!/dist/!out/*.pdf")
+        assert res_root == ParsedRule(RuleKind.REDELETE, "/dist/", "out/*.pdf")
 
         # '?' in target is disallowed
         assert interpreter.parse_components("!?/dist!out/*.pdf") is None
@@ -439,8 +486,8 @@ class TestInterpreterComponents:
         res_keep = interpreter.parse_components("./!out/*.pdf")
         assert res_keep == ParsedRule(RuleKind.RESCUE, "./", "out/*.pdf")
 
-        res_custom = interpreter.parse_components("dist!out/*.pdf")
-        assert res_custom == ParsedRule(RuleKind.RESCUE, "dist", "out/*.pdf")
+        res_custom = interpreter.parse_components("dist/!out/*.pdf")
+        assert res_custom == ParsedRule(RuleKind.RESCUE, "dist/", "out/*.pdf")
 
     def test_parse_components_exclude(self) -> None:
         interpreter = RuleInterpreter()
@@ -530,31 +577,31 @@ class TestPhagocytosis:
         """A later RESCUE updates destination, devouring the earlier RESCUE destination."""
         rules = [
             compile_rule("out/") or pytest.fail("rule failed"),
-            compile_rule("dist!out/*.pdf") or pytest.fail("rule failed"),
-            compile_rule("final!out/*.pdf") or pytest.fail("rule failed"),
+            compile_rule("dist/!out/*.pdf") or pytest.fail("rule failed"),
+            compile_rule("final/!out/*.pdf") or pytest.fail("rule failed"),
         ]
         exc, arc, r = evaluate_path(PurePosixPath("out/report.pdf"), False, rules)
         assert not exc
         assert arc == PurePosixPath("final/report.pdf")
-        assert r is not None and r.target == "final"
+        assert r is not None and r.target == "final/"
 
     def test_targeted_redelete_only_eats_matching_target(self) -> None:
-        """!build!out/*.pdf and !!out/*.pdf do NOT eat dist!out/*.pdf, but !dist!out/*.pdf DOES."""
+        """!build/!out/*.pdf and !!out/*.pdf do NOT eat dist/!out/*.pdf, but !dist/!out/*.pdf DOES."""
         rules = [
             compile_rule("out/") or pytest.fail("rule failed"),
-            compile_rule("dist!out/*.pdf") or pytest.fail("rule failed"),
-            compile_rule("!build!out/*.pdf") or pytest.fail("rule failed"),
+            compile_rule("dist/!out/*.pdf") or pytest.fail("rule failed"),
+            compile_rule("!build/!out/*.pdf") or pytest.fail("rule failed"),
             compile_rule("!!out/*.pdf") or pytest.fail("rule failed"),
         ]
         exc1, arc1, _ = evaluate_path(PurePosixPath("out/report.pdf"), False, rules)
         assert not exc1
         assert arc1 == PurePosixPath("dist/report.pdf")
 
-        rules.append(compile_rule("!dist!out/*.pdf") or pytest.fail("rule failed"))
+        rules.append(compile_rule("!dist/!out/*.pdf") or pytest.fail("rule failed"))
         exc2, arc2, r2 = evaluate_path(PurePosixPath("out/report.pdf"), False, rules)
         assert exc2
         assert r2 is not None and r2.kind == RuleKind.REDELETE
-        assert r2.target == "dist"
+        assert r2.target == "dist/"
 
     def test_squeeze_rules_eats_identical_patterns(self) -> None:
         """squeeze_rules compresses rules where later rules eat earlier rules of the same pattern."""
@@ -562,12 +609,12 @@ class TestPhagocytosis:
             "*.log",
             "out/",
             "!out/*.pdf",
-            "dist!out/*.pdf",
+            "dist/!out/*.pdf",
             "!*.log",
             "!!out/draft.pdf",
         ]
         squeezed = squeeze_rules(raw_rules)
-        assert squeezed == ["!*.log", "out/", "dist!out/*.pdf", "!!out/draft.pdf"]
+        assert squeezed == ["!*.log", "out/", "dist/!out/*.pdf", "!!out/draft.pdf"]
 
 
 # ==============================================================================
@@ -656,32 +703,32 @@ class TestScopedRules:
         assert matched is not None and matched.kind == RuleKind.RESCUE
 
     def test_scoped_rescue_omitted_prefix_exiles_and_dot_slash_preserves_scope(self) -> None:
-        """Inside a subdirectory .zipignore, omitted prefix (dist!*.pdf) exiles to shallowest excluded parent,
-        while './dist!*.pdf' places inside that subdirectory's own hierarchy (out/dist/).
+        """Inside a subdirectory .zipignore, omitted prefix (dist/!*.pdf) exiles to shallowest excluded parent,
+        while './dist/!*.txt' places inside that subdirectory's own hierarchy (out/dist/).
         """
         root_rule = compile_rule("a/out/", scope=PurePosixPath())
-        sub_exile_rule = compile_rule("dist!*.pdf", scope=PurePosixPath("a/out"))
-        sub_local_rule = compile_rule("./dist!*.txt", scope=PurePosixPath("a/out"))
+        sub_exile_rule = compile_rule("dist/!*.pdf", scope=PurePosixPath("a/out"))
+        sub_local_rule = compile_rule("./dist/!*.txt", scope=PurePosixPath("a/out"))
         assert root_rule is not None and sub_exile_rule is not None and sub_local_rule is not None
 
         rules = [root_rule, sub_exile_rule, sub_local_rule]
 
-        # Omitted prefix 'dist!*.pdf' -> exiled to a/dist/report.pdf (shallowest excluded parent is 'a')
+        # Omitted prefix 'dist/!*.pdf' -> exiled to a/dist/report.pdf (shallowest excluded parent is 'a')
         exc1, arc1, matched1 = evaluate_path(PurePosixPath("a/out/report.pdf"), False, rules)
         assert not exc1
         assert arc1 == PurePosixPath("a/dist/report.pdf")
-        assert matched1 is not None and matched1.target == "dist"
+        assert matched1 is not None and matched1.target == "dist/"
 
-        # './dist!*.txt' -> kept inside scope at a/out/dist/note.txt
+        # './dist/!*.txt' -> kept inside scope at a/out/dist/note.txt
         exc2, arc2, matched2 = evaluate_path(PurePosixPath("a/out/note.txt"), False, rules)
         assert not exc2
         assert arc2 == PurePosixPath("a/out/dist/note.txt")
-        assert matched2 is not None and matched2.target == "./dist"
+        assert matched2 is not None and matched2.target == "./dist/"
 
     def test_scoped_rescue_absolute_destination(self) -> None:
-        """Rescue remapping /dist!*.pdf inside a subdirectory is resolved relative to archive root."""
+        """Rescue remapping /dist/!*.pdf inside a subdirectory is resolved relative to archive root."""
         root_rule = compile_rule("a/out/", scope=PurePosixPath())
-        sub_rule = compile_rule("/dist!*.pdf", scope=PurePosixPath("a/out"))
+        sub_rule = compile_rule("/dist/!*.pdf", scope=PurePosixPath("a/out"))
         assert root_rule is not None and sub_rule is not None
 
         rules = [root_rule, sub_rule]
@@ -690,7 +737,7 @@ class TestScopedRules:
         exc, arc, matched = evaluate_path(PurePosixPath("a/out/report.pdf"), False, rules)
         assert not exc
         assert arc == PurePosixPath("dist/report.pdf")
-        assert matched is not None and matched.target == "/dist"
+        assert matched is not None and matched.target == "/dist/"
 
     def test_scoped_rescue_preserves_hierarchy(self) -> None:
         """Preserve hierarchy ./! inside a subdirectory preserves path from archive root."""
@@ -748,7 +795,7 @@ class TestScopedRules:
         # Subdirectory temp/.zipignore (Tier 3): rescues !keep.txt, local ./dist!export.csv, and root /archive!summary.csv
         (source / "temp").mkdir()
         (source / "temp" / ".zipignore").write_text(
-            "!keep.txt\n./dist!export.csv\n/archive!summary.csv\n"
+            "!keep.txt\n./dist/!export.csv\n/archive/!summary.csv\n"
         )
         (source / "temp" / "keep.txt").write_text("keep me")
         (source / "temp" / "export.csv").write_text("csv data")
@@ -769,8 +816,8 @@ class TestScopedRules:
         tier2 = [ScopedRule(rule="temp/"), ScopedRule(rule="*.bak")]
         tier3 = [
             ScopedRule(scope=PurePosixPath("temp"), rule="!keep.txt"),
-            ScopedRule(scope=PurePosixPath("temp"), rule="./dist!export.csv"),
-            ScopedRule(scope=PurePosixPath("temp"), rule="/archive!summary.csv"),
+            ScopedRule(scope=PurePosixPath("temp"), rule="./dist/!export.csv"),
+            ScopedRule(scope=PurePosixPath("temp"), rule="/archive/!summary.csv"),
             ScopedRule(scope=PurePosixPath("src"), rule="private.py"),
         ]
         tier4 = [ScopedRule(rule="readme.md")]
@@ -1004,56 +1051,56 @@ class TestAnalogicalCoordinateAndCascade:
 
     def test_three_tier_remap_coordinates(self) -> None:
         """Verifies omitted (exile), ./{to}!, and multi-level ../../{to}! coordinate remapping."""
-        # 1. Omitted prefix (exile destination relative): dist!a/b/out/*.pdf -> a/b/dist/report.pdf
+        # 1. Omitted prefix (exile destination relative): dist/!a/b/out/*.pdf -> a/b/dist/report.pdf
         rules_exile = [
             compile_rule("a/b/out/") or pytest.fail("rule failed"),
-            compile_rule("dist!a/b/out/*.pdf") or pytest.fail("rule failed"),
+            compile_rule("dist/!a/b/out/*.pdf") or pytest.fail("rule failed"),
         ]
         exc1, arc1, _ = evaluate_path(PurePosixPath("a/b/out/report.pdf"), False, rules_exile)
         assert not exc1
         assert arc1 == PurePosixPath("a/b/dist/report.pdf")
 
-        # 2. Hierarchy-preserving coordinate with subpath: ./published!a/b/out/*.pdf -> a/b/out/published/report.pdf
+        # 2. Hierarchy-preserving coordinate with subpath: ./published/!a/b/out/*.pdf -> a/b/out/published/report.pdf
         rules_preserve = [
             compile_rule("a/b/out/") or pytest.fail("rule failed"),
-            compile_rule("./published!a/b/out/*.pdf") or pytest.fail("rule failed"),
+            compile_rule("./published/!a/b/out/*.pdf") or pytest.fail("rule failed"),
         ]
         exc2, arc2, _ = evaluate_path(PurePosixPath("a/b/out/report.pdf"), False, rules_preserve)
         assert not exc2
         assert arc2 == PurePosixPath("a/b/out/published/report.pdf")
 
-        # 3. Multi-level parent climbing coordinate: ../../bundle!a/b/c/out/*.pdf -> a/bundle/report.pdf
+        # 3. Multi-level parent climbing coordinate: ../../bundle/!a/b/c/out/*.pdf -> a/bundle/report.pdf
         rules_climb = [
             compile_rule("a/b/c/out/") or pytest.fail("rule failed"),
-            compile_rule("../../bundle!a/b/c/out/*.pdf") or pytest.fail("rule failed"),
+            compile_rule("../../bundle/!a/b/c/out/*.pdf") or pytest.fail("rule failed"),
         ]
         exc3, arc3, _ = evaluate_path(PurePosixPath("a/b/c/out/report.pdf"), False, rules_climb)
         assert not exc3
         assert arc3 == PurePosixPath("a/bundle/report.pdf")
 
     def test_target_aware_compile_time_squeezer_isomorphism(self) -> None:
-        """Targeted REDELETE (!build!out/*.pdf or !!out/*.pdf) does not eat mismatched RESCUE (dist!out/*.pdf) during squeeze."""
+        """Targeted REDELETE (!build/!out/*.pdf or !!out/*.pdf) does not eat mismatched RESCUE (dist/!out/*.pdf) during squeeze."""
         raw_non_matching = [
             "out/",
-            "dist!out/*.pdf",
-            "!build!out/*.pdf",
+            "dist/!out/*.pdf",
+            "!build/!out/*.pdf",
             "!!out/*.pdf",
         ]
         squeezed_non_matching = squeeze_rules(raw_non_matching)
-        assert "dist!out/*.pdf" in squeezed_non_matching
+        assert "dist/!out/*.pdf" in squeezed_non_matching
         compiled = RuleInterpreter().compile_all(raw_non_matching, squeeze=True)
         exc1, arc1, _ = evaluate_path(PurePosixPath("out/report.pdf"), False, compiled)
         assert not exc1
         assert arc1 == PurePosixPath("dist/report.pdf")
 
-        # Matching targeted REDELETE (!dist!out/*.pdf) eats dist!out/*.pdf
+        # Matching targeted REDELETE (!dist/!out/*.pdf) eats dist/!out/*.pdf
         raw_matching = [
             "out/",
-            "dist!out/*.pdf",
-            "!dist!out/*.pdf",
+            "dist/!out/*.pdf",
+            "!dist/!out/*.pdf",
         ]
         squeezed_matching = squeeze_rules(raw_matching)
-        assert squeezed_matching == ["out/", "!dist!out/*.pdf"]
+        assert squeezed_matching == ["out/", "!dist/!out/*.pdf"]
         compiled_match = RuleInterpreter().compile_all(raw_matching, squeeze=True)
         exc2, arc2, _ = evaluate_path(PurePosixPath("out/report.pdf"), False, compiled_match)
         assert exc2

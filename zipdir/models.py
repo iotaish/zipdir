@@ -32,8 +32,10 @@ def normalize_target(target: str) -> str:
     match stripped:
         case s if s in CANONICAL_TARGETS:
             return CANONICAL_TARGETS[s]
+        case s if s.endswith("/"):
+            return s.rstrip("/") + "/"
         case s:
-            return s.rstrip("/")
+            return s
 
 
 def redelete_matches_rescue(redelete_target: str, rescued_target: str | None) -> bool:

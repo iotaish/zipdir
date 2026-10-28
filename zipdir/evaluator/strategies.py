@@ -119,11 +119,23 @@ DEFAULT_RULE_TRANSITIONS: dict[RuleKind, IRuleTransition] = {
 }
 
 
-def _combine_dest(dest_dir: PurePosixPath, sub_path: PurePosixPath) -> PurePosixPath:
+def is_rename_target(target: str) -> bool:
+    """Check if target represents a file rename rather than a directory placement."""
+    stripped = target.strip()
+    return bool(
+        stripped
+        and not stripped.endswith("/")
+        and stripped not in (".", "..", "./", "../", "/")
+    )
+
+
+def _combine_dest(
+    dest_dir: PurePosixPath, sub_path: PurePosixPath, *, is_rename: bool = False
+) -> PurePosixPath:
     clean_dir = PurePosixPath() if dest_dir == PurePosixPath(".") else dest_dir
     match clean_dir:
         case PurePosixPath() if clean_dir != PurePosixPath():
-            if clean_dir.suffix:
+            if is_rename:
                 return clean_dir
             return clean_dir / sub_path
         case _:
@@ -155,8 +167,10 @@ class ArchiveRootRemapStrategy(IRemapStrategy):
                 return False
 
     def remap(self, ctx: RemapContext) -> PurePosixPath:
-        dest_dir = normalize_posix_path(PurePosixPath(ctx.rescued_by.target.lstrip("/")))
-        return _combine_dest(dest_dir, ctx.sub_path)
+        target = ctx.rescued_by.target
+        is_rename = is_rename_target(target)
+        dest_dir = normalize_posix_path(PurePosixPath(target.lstrip("/")))
+        return _combine_dest(dest_dir, ctx.sub_path, is_rename=is_rename)
 
 
 class LocalScopeRemapStrategy(IRemapStrategy):
@@ -170,7 +184,9 @@ class LocalScopeRemapStrategy(IRemapStrategy):
                 return False
 
     def remap(self, ctx: RemapContext) -> PurePosixPath:
-        rel_sub = ctx.rescued_by.target.removeprefix("./").strip("/")
+        target = ctx.rescued_by.target
+        is_rename = is_rename_target(target)
+        rel_sub = target.removeprefix("./").strip("/")
         scope = ctx.rescued_by.scope
         match (scope, ctx.shallowest_excluded_ancestor):
             case (s, _) if s != PurePosixPath():
@@ -181,7 +197,7 @@ class LocalScopeRemapStrategy(IRemapStrategy):
                 preserved_base = ctx.rel_path.parent
 
         raw_dest = preserved_base / rel_sub if rel_sub else preserved_base
-        return _combine_dest(normalize_posix_path(raw_dest), ctx.sub_path)
+        return _combine_dest(normalize_posix_path(raw_dest), ctx.sub_path, is_rename=is_rename)
 
 
 class ParentClimbRemapStrategy(IRemapStrategy):
@@ -197,8 +213,10 @@ class ParentClimbRemapStrategy(IRemapStrategy):
                 return False
 
     def remap(self, ctx: RemapContext) -> PurePosixPath:
+        target = ctx.rescued_by.target
+        is_rename = is_rename_target(target)
         current = PurePosixPath() if ctx.anchor_parent == PurePosixPath(".") else ctx.anchor_parent
-        parts = [p for p in ctx.rescued_by.target.split("/") if p and p != "."]
+        parts = [p for p in target.split("/") if p and p != "."]
         idx = 0
         while idx < len(parts) and parts[idx] == "..":
             current = (
@@ -209,7 +227,7 @@ class ParentClimbRemapStrategy(IRemapStrategy):
             idx += 1
         remainder = PurePosixPath(*parts[idx:]) if idx < len(parts) else PurePosixPath()
         combined = current / remainder if remainder != PurePosixPath() else current
-        return _combine_dest(normalize_posix_path(combined), ctx.sub_path)
+        return _combine_dest(normalize_posix_path(combined), ctx.sub_path, is_rename=is_rename)
 
 
 class ExileRemapStrategy(IRemapStrategy):
@@ -220,8 +238,10 @@ class ExileRemapStrategy(IRemapStrategy):
 
     def remap(self, ctx: RemapContext) -> PurePosixPath:
         target = ctx.rescued_by.target
+        is_rename = is_rename_target(target)
         has_ancestor = ctx.shallowest_excluded_ancestor is not None
-        match (has_ancestor, target, ctx.rel_path.parent):
+        clean_target = target.rstrip("/")
+        match (has_ancestor, clean_target, ctx.rel_path.parent):
             case (False, "", parent) if parent == PurePosixPath("."):
                 return ctx.rel_path
             case (True, _, _):
@@ -231,8 +251,8 @@ class ExileRemapStrategy(IRemapStrategy):
             case _:
                 exile_base = ctx.anchor_parent.parent
 
-        raw_dest = exile_base / target if target else exile_base
-        return _combine_dest(normalize_posix_path(raw_dest), ctx.sub_path)
+        raw_dest = exile_base / clean_target if clean_target else exile_base
+        return _combine_dest(normalize_posix_path(raw_dest), ctx.sub_path, is_rename=is_rename)
 
 
 DEFAULT_REMAP_STRATEGIES: tuple[IRemapStrategy, ...] = (
