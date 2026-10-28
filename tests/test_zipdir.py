@@ -264,6 +264,47 @@ class TestPathEvaluation:
         assert exc3
         assert arc3 is None
 
+    def test_rescue_rename_with_matching_suffix(self) -> None:
+        """When {to} has the same suffix as rescued item, it renames the file instead of appending."""
+        # 1. Exile destination rename: final.pdf!out/report.pdf -> final.pdf
+        rules1 = [
+            compile_rule("out/") or pytest.fail("rule failed"),
+            compile_rule("final.pdf!out/report.pdf") or pytest.fail("rule failed"),
+        ]
+        exc1, arc1, m1 = evaluate_path(PurePosixPath("out/report.pdf"), False, rules1)
+        assert not exc1
+        assert arc1 == PurePosixPath("final.pdf")
+        assert m1 is not None and m1.target == "final.pdf"
+
+        # 2. Subdirectory destination rename: dist/final.pdf!out/report.pdf -> dist/final.pdf
+        rules2 = [
+            compile_rule("out/") or pytest.fail("rule failed"),
+            compile_rule("dist/final.pdf!out/report.pdf") or pytest.fail("rule failed"),
+        ]
+        exc2, arc2, m2 = evaluate_path(PurePosixPath("out/report.pdf"), False, rules2)
+        assert not exc2
+        assert arc2 == PurePosixPath("dist/final.pdf")
+
+        # 3. Archive root rename: /final.pdf!out/report.pdf -> final.pdf
+        rules3 = [
+            compile_rule("out/") or pytest.fail("rule failed"),
+            compile_rule("/final.pdf!out/report.pdf") or pytest.fail("rule failed"),
+        ]
+        exc3, arc3, m3 = evaluate_path(PurePosixPath("out/report.pdf"), False, rules3)
+        assert not exc3
+        assert arc3 == PurePosixPath("final.pdf")
+
+        # 4. Redelete targeting renamed file cancels rescue
+        rules4 = [
+            compile_rule("out/") or pytest.fail("rule failed"),
+            compile_rule("final.pdf!out/report.pdf") or pytest.fail("rule failed"),
+            compile_rule("!final.pdf!out/report.pdf") or pytest.fail("rule failed"),
+        ]
+        exc4, arc4, m4 = evaluate_path(PurePosixPath("out/report.pdf"), False, rules4)
+        assert exc4
+        assert arc4 is None
+        assert m4 is not None and m4.kind == RuleKind.REDELETE
+
 
 # ==============================================================================
 # 3. End-to-End Packaging & Integration Tests

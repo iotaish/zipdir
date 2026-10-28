@@ -123,6 +123,8 @@ def _combine_dest(dest_dir: PurePosixPath, sub_path: PurePosixPath) -> PurePosix
     clean_dir = PurePosixPath() if dest_dir == PurePosixPath(".") else dest_dir
     match clean_dir:
         case PurePosixPath() if clean_dir != PurePosixPath():
+            if clean_dir.suffix and clean_dir.suffix == sub_path.suffix:
+                return clean_dir
             return clean_dir / sub_path
         case _:
             return sub_path
@@ -187,7 +189,9 @@ class ParentClimbRemapStrategy(IRemapStrategy):
 
     def matches(self, target: str) -> bool:
         match target:
-            case ".." | "../" | str() if target.startswith("../"):
+            case ".." | "../":
+                return True
+            case s if s.startswith("../"):
                 return True
             case _:
                 return False
@@ -218,11 +222,11 @@ class ExileRemapStrategy(IRemapStrategy):
         target = ctx.rescued_by.target
         has_ancestor = ctx.shallowest_excluded_ancestor is not None
         match (has_ancestor, target, ctx.rel_path.parent):
-            case (False, "", PurePosixPath(".")):
+            case (False, "", parent) if parent == PurePosixPath("."):
                 return ctx.rel_path
             case (True, _, _):
                 exile_base = ctx.anchor_parent
-            case (False, _, PurePosixPath(".")):
+            case (False, _, parent) if parent == PurePosixPath("."):
                 exile_base = PurePosixPath()
             case _:
                 exile_base = ctx.anchor_parent.parent

@@ -33,9 +33,9 @@ class PathEvaluator(IPathEvaluator):
             if interpreter is not None:
                 compiler = interpreter
             else:
-                from zipdir.interpreter import RuleInterpreter
+                import importlib
 
-                compiler = RuleInterpreter()
+                compiler = importlib.import_module("zipdir.interpreter").RuleInterpreter()
             self.rules = compiler.compile_all(rules)
         self.transitions = transitions if transitions is not None else DEFAULT_RULE_TRANSITIONS
         self.remap_strategies = (
@@ -97,7 +97,7 @@ class PathEvaluator(IPathEvaluator):
         self, path: PurePosixPath, posix_str: str, scope: PurePosixPath
     ) -> str | None:
         match (scope, path.is_relative_to(scope) and path != scope):
-            case (PurePosixPath(), _):
+            case (s, _) if s == PurePosixPath():
                 return posix_str
             case (_, True):
                 return path.relative_to(scope).as_posix()

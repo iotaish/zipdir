@@ -1,10 +1,8 @@
-"""Minimal concrete 4-component .zipignore rule interpreter (base stage for progressive inheritance)."""
-
+import importlib
 import re
 from collections.abc import Sequence
 from pathlib import PurePosixPath
 
-from zipdir.glob import GlobExpression
 from zipdir.interfaces.glob import IGlobCompiler
 from zipdir.interfaces.interpreter import IRuleInterpreter
 from zipdir.models import IgnoreRule, ParsedRule, RuleKind, ScopedRule
@@ -18,18 +16,21 @@ class RuleInterpreter(IRuleInterpreter):
     glob_compiler: IGlobCompiler
 
     def __init__(self, glob_compiler: IGlobCompiler | None = None) -> None:
-        self.glob_compiler = glob_compiler if glob_compiler is not None else GlobExpression()
+        if glob_compiler is not None:
+            self.glob_compiler = glob_compiler
+        else:
+            self.glob_compiler = importlib.import_module("zipdir.glob").GlobExpression()
 
     def parse_components(self, line: str) -> ParsedRule | None:
         """Parse raw line into 4-component AST node (ParsedRule)."""
         stripped = line.strip()
         match stripped:
-            case "" | str() if stripped.startswith("#"):
+            case "":
                 return None
-            case str() if stripped.startswith(r"\#"):
-                return ParsedRule(RuleKind.EXCLUDE, "", stripped[1:])
-            case str() if stripped.startswith(r"\!"):
-                return ParsedRule(RuleKind.EXCLUDE, "", stripped[1:])
+            case str() if stripped.startswith("#"):
+                return None
+            case str() if stripped.startswith((r"\#", r"\!")):
+                return ParsedRule(RuleKind.EXCLUDE, "", stripped)
             case _:
                 match RULE_COMPONENT_PATTERN.match(stripped):
                     case None:
