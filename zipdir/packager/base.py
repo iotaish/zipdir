@@ -6,13 +6,12 @@ import zipfile
 from collections.abc import Iterator, Sequence
 from pathlib import Path, PurePosixPath
 
-from zipdir.evaluator import PathEvaluator
+import importlib
 from zipdir.interfaces.evaluator import IPathEvaluator
 from zipdir.interfaces.packager import IArchiveEntryWriter, IPackager
 from zipdir.interfaces.ui import IReporter
 from zipdir.models import IgnoreRule, PackagerConfig, RuleKind
 from zipdir.packager.writers import DEFAULT_ENTRY_WRITERS
-from zipdir.ui import ConsoleReporter
 
 
 def _is_packable_stat(path: Path) -> bool:
@@ -42,8 +41,16 @@ class ZipPackager(IPackager):
         entry_writers: Sequence[IArchiveEntryWriter] | None = None,
     ) -> None:
         self.config = config
-        self.evaluator = evaluator if evaluator is not None else PathEvaluator(config.rules)
-        self.reporter = reporter if reporter is not None else ConsoleReporter()
+        self.evaluator = (
+            evaluator
+            if evaluator is not None
+            else importlib.import_module("zipdir.evaluator").PathEvaluator(config.rules)
+        )
+        self.reporter = (
+            reporter
+            if reporter is not None
+            else importlib.import_module("zipdir.ui").ConsoleReporter()
+        )
         self.entry_writers = entry_writers if entry_writers is not None else DEFAULT_ENTRY_WRITERS
         self.compiled_rules = list(self.evaluator.rules)
         self.rescued_files = []

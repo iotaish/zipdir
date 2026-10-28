@@ -45,9 +45,9 @@ class PresetCatalog(IPresetCatalog):
         if interpreter is not None:
             self.interpreter = interpreter
         else:
-            from zipdir.interpreter import RuleInterpreter
+            import importlib
 
-            self.interpreter = RuleInterpreter()
+            self.interpreter = importlib.import_module("zipdir.interpreter").RuleInterpreter()
 
     def parse_file(self, file: Path) -> PresetModel:
         """Parse a .zipignore preset file extracting description, inherit/extends, and rule lines."""

@@ -78,9 +78,9 @@ class ParsedRule(BaseModel):
     ) -> None:
         if kind is not None:
             data.setdefault("kind", kind)
-        if target:
+        if target is not None:
             data.setdefault("target", target)
-        if pattern:
+        if pattern is not None:
             data.setdefault("pattern", pattern)
         super().__init__(**data)
 
