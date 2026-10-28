@@ -123,7 +123,7 @@ def _combine_dest(dest_dir: PurePosixPath, sub_path: PurePosixPath) -> PurePosix
     clean_dir = PurePosixPath() if dest_dir == PurePosixPath(".") else dest_dir
     match clean_dir:
         case PurePosixPath() if clean_dir != PurePosixPath():
-            if clean_dir.suffix and clean_dir.suffix == sub_path.suffix:
+            if clean_dir.suffix:
                 return clean_dir
             return clean_dir / sub_path
         case _:

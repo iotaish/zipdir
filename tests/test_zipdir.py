@@ -305,6 +305,16 @@ class TestPathEvaluation:
         assert arc4 is None
         assert m4 is not None and m4.kind == RuleKind.REDELETE
 
+        # 5. Different extension rename: summary.txt!out/data.log -> summary.txt
+        rules5 = [
+            compile_rule("out/") or pytest.fail("rule failed"),
+            compile_rule("summary.txt!out/data.log") or pytest.fail("rule failed"),
+        ]
+        exc5, arc5, m5 = evaluate_path(PurePosixPath("out/data.log"), False, rules5)
+        assert not exc5
+        assert arc5 == PurePosixPath("summary.txt")
+        assert m5 is not None and m5.target == "summary.txt"
+
 
 # ==============================================================================
 # 3. End-to-End Packaging & Integration Tests
