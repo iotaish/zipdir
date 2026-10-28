@@ -119,7 +119,8 @@ alias zipd='zipdir'
   - リマップ・リネーム記法を活用：
 
     ```text
-    dist!build/release/bin/*
+    dist/!build/release/bin/*
+    app!build/release/bin/app
     final.pdf!out/report.pdf
     /submission.pdf!out/report.pdf
     ```
@@ -138,8 +139,10 @@ alias zipd='zipdir'
 1. **3 系統プレフィックスに統一された救出・リマップ・リネーム記法 (`/`・`./`・省略)**
    - ディレクトリ全体を除外した上で、特定の成果物（PDF やドキュメントなど）のみを安全に救出してアーカイブに含めることができます。
    - 出力先オプション `-o` と完全に共通の 3 系統プレフィックスにより、アーカイブのルートを基準とする `/`（`/!`・`/{to}!`）、元のソース階層や局所スコープを基準とする `./`（`./!`・`./{to}!`）および `../`（`../!`・`../../{to}!`）、そしてプレフィックス省略により除外され尽くした亡命先（`shallowest_excluded_ancestor.parent`）を基準とする亡命ルート（`!`・`{to}!`）を直感的に記述できます。
-   - **スマートリネーム**: `{to}` に拡張子が含まれる場合（例: `final.pdf!out/report.pdf`）はディレクトリではなく**リネーム後のファイル名**として配置されます（異なる拡張子への変更も可）。末尾スラッシュ（`v1.0/`）や拡張子がない場合は**配置先ディレクトリ**として解決されます。
-   - 任意の救出ルール `{to}!{pattern}` の先頭に `!` をもう1つ付与した `!{to}!{pattern}`（例: `!!out/*.pdf`、`!dist!out/*.pdf`、`!./!out/*.pdf`、`!final.pdf!out/*.pdf`）で、その救出先・リネーム先のみをピンポイントで打ち消して再除外できます。
+   - **救出・リネームの一貫仕様（末尾スラッシュによるディレクトリ／リネーム判定）**:
+     - 配置先ディレクトリへの配置には**末尾スラッシュ（`/`）が必須**です（例: `dist/!out/*.pdf`、`/dist/!out/*.pdf`、`./dist/!out/*.pdf`）。
+     - 末尾スラッシュがない場合（例: `final.pdf!out/report.pdf`、`app!build/bin`、`dist!out/report.pdf`）は、拡張子の有無に関わらず**ファイルリネーム**として解決されます（拡張子のない実行バイナリのリネームや、異なる拡張子へのリネームも自然にサポート）。
+     - 任意の救出ルール `{to}!{pattern}` の先頭に `!` を付与した `!{to}!{pattern}`（例: `!!out/*.pdf`、`!dist/!out/*.pdf`、`!./!out/*.pdf`、`!final.pdf!out/*.pdf`、`!dist!out/*.pdf`）で、該当する救出先やリネーム先のみをピンポイントで打ち消して再除外できます。
 
 1. **非貪欲枝刈り (Non-Greedy Pruning) と 3 段階の貪食 (Phagocytosis)**
    - ディレクトリ走査の前にツリー全体の局所 `.zipignore` を先行探索し、配下に有効な救出ルールがあるディレクトリは誤って除外枝刈り（Prune）されないように保護します。
@@ -161,16 +164,17 @@ alias zipd='zipdir'
 | `out/` | 除外 (EXCLUDE) | `out` ディレクトリおよびその配下をすべて除外 |
 | `*.log` | 除外 (EXCLUDE) | 拡張子が `.log` のファイルをすべて除外 |
 | `!out/*.pdf` | 亡命救出 (RESCUE, 省略) | `out` は除外するが、配下の PDF を亡命先（除外され尽くした親階層）へリフトして救出 |
-| `dist!out/*.pdf` | 亡命先相対ディレクトリリマップ | 亡命先（除外され尽くした親階層）を基準として `dist/` 配下へ救出・配置（サブディレクトリ内でも共通） |
-| `final.pdf!out/report.pdf` | 亡命先ファイルリネーム | 亡命先を基準としてファイル名を `final.pdf` に変更して救出（`{to}` に拡張子がある場合はリネーム扱い） |
+| `dist/!out/*.pdf` | 亡命先相対ディレクトリリマップ | 亡命先（除外され尽くした親階層）を基準として `dist/` 配下へ救出・配置（末尾 `/` 必須） |
+| `final.pdf!out/report.pdf` | 亡命先ファイルリネーム | 亡命先を基準としてファイル名を `final.pdf` に変更して救出（末尾 `/` なしはリネーム扱い） |
+| `app!build/release/bin` | 亡命先ファイルリネーム (拡張子なし) | 拡張子のない実行バイナリ等のファイル名を `app` に変更して救出 |
 | `dist/final.pdf!out/*.pdf` | ディレクトリ配置 + リネーム | 亡命先の `dist/` ディレクトリ配下に `final.pdf` としてリネーム配置 |
 | `./!out/*.pdf` | 階層死守 (RESCUE, `./`) | `out` は除外するが、`out/` 配下の階層構造を完全に維持したまま PDF を救出 |
-| `./dist!out/*.pdf` | ソース階層・スコープ相対配置 | 元のソース階層（サブディレクトリ `.zipignore` 内ではその階層）の `dist/` 配下へ救出・配置 |
-| `../!sub/doc.txt` | 親階層リフト (`..`) | `..` の段数分だけ親ディレクトリへ遡って配置（`../../dist!` 等の複合指定も可） |
-| `/dist!out/*.pdf` | ルート絶対リマップ | アーカイブの全体ルートを基準として `dist/` 配下へ救出・配置 |
+| `./dist/!out/*.pdf` | ソース階層・スコープ相対配置 | 元のソース階層（サブディレクトリ `.zipignore` 内ではその階層）の `dist/` 配下へ救出・配置 |
+| `../!sub/doc.txt` | 親階層リフト (`..`) | `..` の段数分だけ親ディレクトリへ遡って配置（`../../bundle/!` 等の複合指定も可） |
+| `/dist/!out/*.pdf` | ルート絶対リマップ | アーカイブの全体ルートを基準として `dist/` 配下へ救出・配置 |
 | `/final.pdf!out/report.pdf` | ルート絶対リネーム | アーカイブの全体ルート直下に `final.pdf` としてリネーム配置 |
 | `!!out/*.pdf` | 亡命救出打消 (REDELETE) | 先行する `!out/*.pdf`（亡命ルート）による救出を打ち消して再除外 |
-| `!dist!out/*.pdf` | 救出先指定打消 (REDELETE) | 先行する `dist!out/*.pdf` による救出設定のみをピンポイントで打ち消して再除外 |
+| `!dist/!out/*.pdf` | 救出先指定打消 (REDELETE) | 先行する `dist/!out/*.pdf` による救出設定のみをピンポイントで打ち消して再除外 |
 | `!final.pdf!out/report.pdf` | リネーム指定打消 (REDELETE) | 先行する `final.pdf!out/report.pdf` によるリネーム救出のみをピンポイントで打ち消して再除外 |
 
 ---
@@ -216,7 +220,7 @@ alias zipd='zipdir'
 # inherit: clean, .gitignore
 # description: Custom distribution preset
 build/
-dist!build/*.tar.gz
+dist/!build/*.tar.gz
 ```
 
 ---
@@ -255,7 +259,7 @@ zipdir --list-presets
 zipdir --dry-run
 
 # 個別ルールの追加指定（除外・リマップ・リネーム）
-zipdir -r '*.bak' -r 'dist!*.csv' -r 'final.pdf!out/report.pdf'
+zipdir -r '*.bak' -r 'dist/!*.csv' -r 'final.pdf!out/report.pdf'
 ```
 
 ### CLI オプション一覧
