@@ -24,7 +24,9 @@ class AbsoluteOutputStrategy(IOutputTargetStrategy):
 
     def matches(self, raw: str) -> bool:
         match raw:
-            case "~" | str() if raw.startswith(("/", "~/")):
+            case "~":
+                return True
+            case s if s.startswith(("/", "~/")):
                 return True
             case _:
                 return False
@@ -38,7 +40,9 @@ class CwdRelativeOutputStrategy(IOutputTargetStrategy):
 
     def matches(self, raw: str) -> bool:
         match raw:
-            case "." | ".." | str() if raw.startswith(("./", "../")):
+            case "." | "..":
+                return True
+            case s if s.startswith(("./", "../")):
                 return True
             case _:
                 return False
