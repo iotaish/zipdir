@@ -157,6 +157,10 @@ alias zipd='zipdir'
    - `-o` オプションは先頭プレフィックスによって **絶対パス（`/`・`~/`）**、**カレント相対パス（`./`・`../`）**、**ソース親相対パス（`___` または値省略 `-o`）** の 3 系統を直感的に切り替えられます。
    - 出力ファイル名を `.zip` まで明示していない場合（未指定やディレクトリ指定時）、同名の `.zip` が既に存在すると自動的に `-t`（`<stem>_<YYYYMMDD_HHMMSS>.zip`）へフォールバックして完了します。
 
+1. **自己完結型ルールバンドル出力 (`--dump-rules` / `--freeze-rules`)**
+   - 外部プリセット（`clean` 等）や親ディレクトリ設定、サブディレクトリの `.zipignore`、CLI オプションをすべてマージ・C3 線形化・Squeeze 圧縮した「最終的なルール列」を単一のスタンドアロンな `.zipignore` 形式として標準出力（`--dump-rules`）または `<source>/.zipignore`（`--freeze-rules`）へ書き出せます。
+   - 外部プリセットが存在しない CI 環境や第三者にプロジェクトを渡す際、事前の環境構築なしで同一のパッケージング結果を完全に再現できます。
+
 ## 4. 構文リファレンス
 
 ルールは各行に記述し、`#` で始まる行はコメントとして無視されます。
@@ -257,6 +261,12 @@ zipdir --dry-run
 
 # 個別ルールの追加指定（除外・リマップ・リネーム）
 zipdir -r '*.bak' -r 'dist/!*.csv' -r 'final.pdf!out/report.pdf'
+
+# 解決済みルール列を単一の .zipignore 形式で標準出力にダンプ
+zipdir path/to/project -p clean --dump-rules
+
+# 解決済みルールをプロジェクト直下の .zipignore に固定出力（スタンドアロン化）
+zipdir path/to/project -p clean -r '!out/*.pdf' --freeze-rules
 ```
 
 ### 7.2. CLI オプション一覧
@@ -273,6 +283,8 @@ zipdir -r '*.bak' -r 'dist/!*.csv' -r 'final.pdf!out/report.pdf'
 - `-f, --force`: 同名ファイルが存在する場合に上書き
 - `-v, --verbose`: 救出・除外されたファイルの詳細情報を表示
 - `--dry-run`: アーカイブを作成せず、結果のプレビューのみを表示
+- `--dump-rules`: 解決・圧縮済みのルール列をスタンドアロンな `.zipignore` 形式で標準出力へダンプして終了
+- `--freeze-rules`: 解決・圧縮済みのルール列をプロジェクト直下の `.zipignore` へ直接書き出して終了
 
 [インストール導入]: #1-インストール導入
 [uv-tool-インストール]: #11-uv-tool-によるインストール-推奨
