@@ -44,9 +44,11 @@ from zipdir.interpreter import (
 )
 from zipdir.models import (
     EvaluationResult,
+    ExplanationStep,
     IgnoreRule,
     PackagerConfig,
     ParsedRule,
+    PathExplanation,
     PresetModel,
     ResolvedOutput,
     RuleKind,
@@ -89,6 +91,8 @@ __all__ = [
     "CwdRelativeOutputStrategy",
     "DEFAULT_PRESET_DIRS",
     "EvaluationResult",
+    "ExplanationStep",
+    "PathExplanation",
     "EvaluationState",
     "ExcludeTransition",
     "ExileRemapStrategy",

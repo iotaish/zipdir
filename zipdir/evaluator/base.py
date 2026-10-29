@@ -10,7 +10,14 @@ from zipdir.evaluator.strategies import (
 )
 from zipdir.interfaces.evaluator import IPathEvaluator, IRemapStrategy, IRuleTransition
 from zipdir.interfaces.interpreter import IRuleInterpreter
-from zipdir.models import EvaluationResult, IgnoreRule, RuleKind, ScopedRule
+from zipdir.models import (
+    EvaluationResult,
+    ExplanationStep,
+    IgnoreRule,
+    PathExplanation,
+    RuleKind,
+    ScopedRule,
+)
 
 
 class PathEvaluator(IPathEvaluator):
@@ -61,6 +68,68 @@ class PathEvaluator(IPathEvaluator):
     def should_prune(self, rel_dir: PurePosixPath) -> bool:
         """Minimal base pruning behavior (overridden in pruning.py)."""
         return False
+
+    def explain(self, rel_path: PurePosixPath, is_dir: bool = False) -> PathExplanation:
+        """Trace each step of rule evaluation, capturing transitions and final result."""
+        steps: list[ExplanationStep] = []
+        state = EvaluationState()
+        parts = rel_path.parts
+
+        for k in range(1, len(parts)):
+            anc = PurePosixPath(*parts[:k])
+            anc_str = anc.as_posix()
+            for r in self.rules:
+                match_str = self._scoped_target(anc, anc_str, r.scope)
+                if match_str is not None and r.regex.search(match_str):
+                    self.transitions[r.kind].apply(state, r, ancestor=anc)
+                    steps.append(
+                        ExplanationStep(
+                            target=anc,
+                            is_ancestor=True,
+                            rule=r,
+                            kind=r.kind,
+                            is_excluded_after=state.is_excluded,
+                            shallowest_excluded_ancestor=state.shallowest_excluded_ancestor,
+                            action_description=f"Ancestor '{anc.as_posix()}' matched '{r.raw}' ({r.kind.name})",
+                        )
+                    )
+
+        posix_str = rel_path.as_posix()
+        for r in self.rules:
+            if r.is_dir_only and not is_dir:
+                continue
+            target_str = self._scoped_target(rel_path, posix_str, r.scope)
+            if target_str is not None and r.regex.search(target_str):
+                self.transitions[r.kind].apply(state, r)
+                steps.append(
+                    ExplanationStep(
+                        target=rel_path,
+                        is_ancestor=False,
+                        rule=r,
+                        kind=r.kind,
+                        is_excluded_after=state.is_excluded,
+                        shallowest_excluded_ancestor=state.shallowest_excluded_ancestor,
+                        action_description=f"Target '{rel_path.as_posix()}' matched '{r.raw}' ({r.kind.name})",
+                    )
+                )
+
+        match (state.is_excluded, state.rescued_by):
+            case (True, _):
+                res = EvaluationResult(True, None, state.excluded_by)
+            case (False, None):
+                res = EvaluationResult(False, rel_path, None)
+            case (False, IgnoreRule() as rescued_rule):
+                arc_rel = self._resolve_rescued_path(
+                    rel_path, rescued_rule, state.shallowest_excluded_ancestor
+                )
+                res = EvaluationResult(False, arc_rel, rescued_rule)
+
+        return PathExplanation(
+            rel_path=rel_path,
+            is_dir=is_dir,
+            steps=tuple(steps),
+            result=res,
+        )
 
     def _resolve_rescued_path(
         self,

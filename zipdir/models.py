@@ -227,6 +227,31 @@ class EvaluationResult(BaseModel):
         return self.is_excluded, self.arc_path, self.matched_rule
 
 
+class ExplanationStep(BaseModel):
+    """Record of a single rule match and state transition during evaluation trace."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    target: PurePosixPath
+    is_ancestor: bool
+    rule: IgnoreRule
+    kind: RuleKind
+    is_excluded_after: bool
+    shallowest_excluded_ancestor: PurePosixPath | None = None
+    action_description: str = ""
+
+
+class PathExplanation(BaseModel):
+    """Complete diagnostic trace and final outcome of evaluating a path against rules."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    rel_path: PurePosixPath
+    is_dir: bool = False
+    steps: Sequence[ExplanationStep] = Field(default_factory=tuple)
+    result: EvaluationResult
+
+
 class ResolvedOutput(BaseModel):
     """Resolved archive output path and collision metadata."""
 

@@ -7,6 +7,7 @@ from zipdir.models import (
     EvaluationResult,
     EvaluationState,
     IgnoreRule,
+    PathExplanation,
     RemapContext,
     RuleKind,
 )
@@ -45,4 +46,7 @@ class IPathEvaluator:
         raise NotImplementedError
 
     def should_prune(self, rel_dir: PurePosixPath) -> bool:
+        raise NotImplementedError
+
+    def explain(self, rel_path: PurePosixPath, is_dir: bool = False) -> PathExplanation:
         raise NotImplementedError
