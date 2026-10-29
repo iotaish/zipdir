@@ -1673,3 +1673,119 @@ class TestArchiveConstraints:
         res_size = runner.invoke(app, [str(source), "--max-size", "10B", "-f"])
         assert res_size.exit_code == 1
         assert "Archive constraint violation (--max-size)" in res_size.stderr
+
+
+# ==============================================================================
+# 14. Brace Expansion Tests ({a,b,c})
+# ==============================================================================
+class TestBraceExpansion:
+    """Verifies comma-separated brace expansion patterns in .zipignore rules."""
+
+    def test_brace_expansion_multiple_extensions(self) -> None:
+        """Verifies *.{jpg,png,webp} matches all specified extensions and excludes others."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule("*.{jpg,png,webp}") or pytest.fail("rule failed")
+        rules = [rule]
+
+        # Matched extensions
+        exc_jpg, _, _ = evaluate_path(PurePosixPath("photo.jpg"), False, rules)
+        assert exc_jpg
+
+        exc_png, _, _ = evaluate_path(PurePosixPath("image.png"), False, rules)
+        assert exc_png
+
+        exc_webp, _, _ = evaluate_path(PurePosixPath("banner.webp"), False, rules)
+        assert exc_webp
+
+        # Unmatched extension
+        exc_gif, arc_gif, _ = evaluate_path(PurePosixPath("animation.gif"), False, rules)
+        assert not exc_gif
+        assert arc_gif == PurePosixPath("animation.gif")
+
+    def test_brace_expansion_directory_paths(self) -> None:
+        """Verifies path segments with braces: src/{client,server}/**/*.py."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule("src/{client,server}/**/*.py") or pytest.fail("rule failed")
+        rules = [rule]
+
+        exc_client, _, _ = evaluate_path(
+            PurePosixPath("src/client/components/app.py"), False, rules
+        )
+        assert exc_client
+
+        exc_server, _, _ = evaluate_path(PurePosixPath("src/server/api.py"), False, rules)
+        assert exc_server
+
+        exc_common, arc_common, _ = evaluate_path(PurePosixPath("src/common/util.py"), False, rules)
+        assert not exc_common
+        assert arc_common == PurePosixPath("src/common/util.py")
+
+    def test_brace_expansion_multiple_braces_in_rule(self) -> None:
+        """Verifies multiple brace expansions in single pattern: {src,test}/**/*.{js,ts}."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule("{src,test}/**/*.{js,ts}") or pytest.fail("rule failed")
+        rules = [rule]
+
+        assert evaluate_path(PurePosixPath("src/app.js"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("src/sub/app.ts"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("test/unit.js"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("test/e2e/test.ts"), False, rules)[0]
+
+        # Other extensions / directories
+        assert not evaluate_path(PurePosixPath("src/app.css"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("docs/readme.js"), False, rules)[0]
+
+    def test_brace_expansion_empty_alternative(self) -> None:
+        """Verifies empty alternative in braces: file.{txt,} matches file.txt and file.."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule("file.{txt,}") or pytest.fail("rule failed")
+        rules = [rule]
+
+        assert evaluate_path(PurePosixPath("file.txt"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("file."), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("file.doc"), False, rules)[0]
+
+    def test_single_brace_without_comma_treated_as_literal(self) -> None:
+        """Verifies {single} without comma is treated as literal text, matching shell semantics."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule("file.{single}") or pytest.fail("rule failed")
+        rules = [rule]
+
+        assert evaluate_path(PurePosixPath("file.{single}"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("file.single"), False, rules)[0]
+
+    def test_escaped_brace_treated_as_literal(self) -> None:
+        r"""Verifies \{a,b\} matches literal {a,b}."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule(r"file.\{jpg,png\}") or pytest.fail("rule failed")
+        rules = [rule]
+
+        assert evaluate_path(PurePosixPath("file.{jpg,png}"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("file.jpg"), False, rules)[0]
+
+    def test_brace_expansion_with_rescue_and_remap(self) -> None:
+        """Verifies rescue rules with braces: !out/*.{jpg,png} rescues both types."""
+        from zipdir import compile_rule, evaluate_path
+
+        rules = [
+            compile_rule("out/") or pytest.fail("rule failed"),
+            compile_rule("!out/*.{jpg,png}") or pytest.fail("rule failed"),
+        ]
+
+        exc1, arc1, m1 = evaluate_path(PurePosixPath("out/photo.jpg"), False, rules)
+        assert not exc1
+        assert arc1 == PurePosixPath("photo.jpg")
+
+        exc2, arc2, m2 = evaluate_path(PurePosixPath("out/logo.png"), False, rules)
+        assert not exc2
+        assert arc2 == PurePosixPath("logo.png")
+
+        # Unrescued
+        exc3, _, _ = evaluate_path(PurePosixPath("out/data.csv"), False, rules)
+        assert exc3
