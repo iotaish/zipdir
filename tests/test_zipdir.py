@@ -1789,3 +1789,127 @@ class TestBraceExpansion:
         # Unrescued
         exc3, _, _ = evaluate_path(PurePosixPath("out/data.csv"), False, rules)
         assert exc3
+
+
+# ==============================================================================
+# 15. Bracket Extensions & POSIX Character Class Tests
+# ==============================================================================
+class TestBracketExtensions:
+    """Verifies bracket expressions inside brace expansion and POSIX character classes."""
+
+    def test_brackets_inside_brace_expansion(self) -> None:
+        """Verifies {[0-9],bak} matches digits and bak, but not other extensions."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule("file.{[0-9],bak}") or pytest.fail("rule failed")
+        rules = [rule]
+
+        assert evaluate_path(PurePosixPath("file.1"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("file.9"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("file.bak"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("file.a"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("file.txt"), False, rules)[0]
+
+    def test_bracket_range_inside_brace_path_segments(self) -> None:
+        """Verifies {v[1-3],beta}/**/*.py matches v1-v3 and beta, but not v4."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule("{v[1-3],beta}/**/*.py") or pytest.fail("rule failed")
+        rules = [rule]
+
+        assert evaluate_path(PurePosixPath("v1/app.py"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("v2/sub/core.py"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("v3/pkg/mod.py"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("beta/test.py"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("v4/app.py"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("alpha/app.py"), False, rules)[0]
+
+    def test_comma_inside_bracket_within_brace(self) -> None:
+        """Verifies comma inside bracket is not treated as a brace separator: {[a,b],c}."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule("token_{[a,b],c}.dat") or pytest.fail("rule failed")
+        rules = [rule]
+
+        assert evaluate_path(PurePosixPath("token_a.dat"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("token_b.dat"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("token_c.dat"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("token_,.dat"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("token_d.dat"), False, rules)[0]
+
+    def test_empty_alternative_with_bracket(self) -> None:
+        """Verifies file{,[0-9]}.txt matches file.txt and file1.txt."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule("file{,[0-9]}.txt") or pytest.fail("rule failed")
+        rules = [rule]
+
+        assert evaluate_path(PurePosixPath("file.txt"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("file1.txt"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("file9.txt"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("filea.txt"), False, rules)[0]
+
+    def test_posix_digit_and_xdigit(self) -> None:
+        """Verifies [[:digit:]] and [[:xdigit:]] character classes."""
+        from zipdir import compile_rule, evaluate_path
+
+        r_digit = compile_rule("log.[[:digit:]]") or pytest.fail("rule failed")
+        rules_d = [r_digit]
+        assert evaluate_path(PurePosixPath("log.0"), False, rules_d)[0]
+        assert evaluate_path(PurePosixPath("log.9"), False, rules_d)[0]
+        assert not evaluate_path(PurePosixPath("log.a"), False, rules_d)[0]
+
+        r_hex = compile_rule("color_#[[:xdigit:]][[:xdigit:]].css") or pytest.fail("rule failed")
+        rules_h = [r_hex]
+        assert evaluate_path(PurePosixPath("color_#1a.css"), False, rules_h)[0]
+        assert evaluate_path(PurePosixPath("color_#fF.css"), False, rules_h)[0]
+        assert not evaluate_path(PurePosixPath("color_#1g.css"), False, rules_h)[0]
+
+    def test_posix_alpha_and_alnum(self) -> None:
+        """Verifies [[:alpha:]] and [[:alnum:]] character classes."""
+        from zipdir import compile_rule, evaluate_path
+
+        r_alpha = compile_rule("prefix_[[:alpha:]].log") or pytest.fail("rule failed")
+        rules_a = [r_alpha]
+        assert evaluate_path(PurePosixPath("prefix_a.log"), False, rules_a)[0]
+        assert evaluate_path(PurePosixPath("prefix_Z.log"), False, rules_a)[0]
+        assert not evaluate_path(PurePosixPath("prefix_1.log"), False, rules_a)[0]
+        assert not evaluate_path(PurePosixPath("prefix__.log"), False, rules_a)[0]
+
+        r_alnum = compile_rule("prefix_[[:alnum:]].log") or pytest.fail("rule failed")
+        rules_an = [r_alnum]
+        assert evaluate_path(PurePosixPath("prefix_a.log"), False, rules_an)[0]
+        assert evaluate_path(PurePosixPath("prefix_9.log"), False, rules_an)[0]
+        assert not evaluate_path(PurePosixPath("prefix_-.log"), False, rules_an)[0]
+
+    def test_posix_blank_and_space(self) -> None:
+        """Verifies [[:blank:]] matches space and tab."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule("name[[:blank:]]test.txt") or pytest.fail("rule failed")
+        rules = [rule]
+        assert evaluate_path(PurePosixPath("name test.txt"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("name\ttest.txt"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("name_test.txt"), False, rules)[0]
+
+    def test_negated_posix_classes(self) -> None:
+        """Verifies [^[:digit:]] negates the POSIX character class without parser collision."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule("doc.[^[:digit:]]") or pytest.fail("rule failed")
+        rules = [rule]
+        assert evaluate_path(PurePosixPath("doc.a"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("doc.z"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("doc.0"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("doc.9"), False, rules)[0]
+
+    def test_posix_classes_inside_brace_expansion(self) -> None:
+        """Verifies {[[:digit:]],bak} inside brace expansion."""
+        from zipdir import compile_rule, evaluate_path
+
+        rule = compile_rule("data_{[[:digit:]],bak}.csv") or pytest.fail("rule failed")
+        rules = [rule]
+        assert evaluate_path(PurePosixPath("data_1.csv"), False, rules)[0]
+        assert evaluate_path(PurePosixPath("data_bak.csv"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("data_a.csv"), False, rules)[0]
+        assert not evaluate_path(PurePosixPath("data_test.csv"), False, rules)[0]
