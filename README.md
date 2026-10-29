@@ -161,6 +161,10 @@ alias zipd='zipdir'
    - 外部プリセット（`clean` 等）や親ディレクトリ設定、サブディレクトリの `.zipignore`、CLI オプションをすべてマージ・C3 線形化・Squeeze 圧縮した「最終的なルール列」を単一のスタンドアロンな `.zipignore` 形式として標準出力（`--dump-rules`）または `<source>/.zipignore`（`--freeze-rules`）へ書き出せます。
    - 外部プリセットが存在しない CI 環境や第三者にプロジェクトを渡す際、事前の環境構築なしで同一のパッケージング結果を完全に再現できます。
 
+1. **ルール評価の診断・トレーシング (`--explain <path>`)**
+   - 多階層カスケード（Preset → Root → Subdir → CLI）において、指定したファイルやディレクトリが「どの階層のどのルールによって除外（EXCLUDE）・救出（RESCUE）・再除外（REDELETE）されたか」の内部状態遷移履歴と、最終的なアーカイブ内パス（`arc_path`）をステップ順にトレース表示します。
+   - 意図しない除外や救出先リマップの衝突原因を一目で特定・デバッグできます。
+
 ## 4. 構文リファレンス
 
 ルールは各行に記述し、`#` で始まる行はコメントとして無視されます。
@@ -267,6 +271,9 @@ zipdir path/to/project -p clean --dump-rules
 
 # 解決済みルールをプロジェクト直下の .zipignore に固定出力（スタンドアロン化）
 zipdir path/to/project -p clean -r '!out/*.pdf' --freeze-rules
+
+# 特定ファイルのルール評価と状態遷移（除外・救出・リマップ）を診断
+zipdir path/to/project -p clean -r '!out/*.pdf' --explain out/report.pdf
 ```
 
 ### 7.2. CLI オプション一覧
@@ -285,6 +292,7 @@ zipdir path/to/project -p clean -r '!out/*.pdf' --freeze-rules
 - `--dry-run`: アーカイブを作成せず、結果のプレビューのみを表示
 - `--dump-rules`: 解決・圧縮済みのルール列をスタンドアロンな `.zipignore` 形式で標準出力へダンプして終了
 - `--freeze-rules`: 解決・圧縮済みのルール列をプロジェクト直下の `.zipignore` へ直接書き出して終了
+- `--explain <path>`: 指定したパスのルール評価履歴（祖先除外・救出・リマップ）を診断表示して終了
 
 [インストール導入]: #1-インストール導入
 [uv-tool-インストール]: #11-uv-tool-によるインストール-推奨
