@@ -1537,3 +1537,139 @@ class TestRuleExplanation:
         # Verify no zip file created
         zip_candidates = list(tmp_path.glob("*.zip"))
         assert len(zip_candidates) == 0
+
+
+# ==============================================================================
+# 13. Archive Constraint Guard Tests (--max-size, --check-empty, --strict-rescue)
+# ==============================================================================
+class TestArchiveConstraints:
+    """Verifies pre-flight and post-flight submission constraints and guards."""
+
+    def test_parse_size_units_and_errors(self) -> None:
+        """Verifies parsing human-readable size strings into byte values."""
+        from zipdir.models import parse_size
+
+        assert parse_size("1024") == 1024
+        assert parse_size("1024B") == 1024
+        assert parse_size("500KB") == 500 * 1024
+        assert parse_size("500k") == 500 * 1024
+        assert parse_size("10MB") == 10 * 1024 * 1024
+        assert parse_size("10M") == 10 * 1024 * 1024
+        assert parse_size("1.5GB") == int(1.5 * 1024 * 1024 * 1024)
+        assert parse_size("1G") == 1024 * 1024 * 1024
+
+        with pytest.raises(ValueError, match="Invalid size string"):
+            parse_size("invalid")
+        with pytest.raises(ValueError, match="Unknown size unit"):
+            parse_size("10XB")
+
+    def test_check_empty_raises_when_no_files_collected(self, tmp_path: Path) -> None:
+        """Verifies --check-empty raises ValueError when archive contains 0 regular files."""
+        source = tmp_path / "empty_proj"
+        source.mkdir()
+        (source / "ignore.log").write_text("test")
+
+        out_zip = tmp_path / "out.zip"
+        config = PackagerConfig(
+            source=source,
+            output=out_zip,
+            name="empty_test",
+            preset_name="none",
+            rules=("*.log",),
+            check_empty=True,
+        )
+        packager = ZipPackager(config)
+        with pytest.raises(ValueError, match="Archive constraint violation \\(--check-empty\\)"):
+            packager.package()
+
+        assert not out_zip.exists()
+
+    def test_strict_rescue_raises_when_rescue_rule_matches_zero_files(self, tmp_path: Path) -> None:
+        """Verifies --strict-rescue raises ValueError when configured rescue rules rescue 0 files."""
+        source = tmp_path / "strict_proj"
+        source.mkdir()
+        (source / "main.py").write_text("print('hello')")
+
+        out_zip = tmp_path / "out.zip"
+        config = PackagerConfig(
+            source=source,
+            output=out_zip,
+            name="strict_test",
+            preset_name="none",
+            rules=("out/", "!out/*.pdf"),
+            strict_rescue=True,
+        )
+        packager = ZipPackager(config)
+        with pytest.raises(ValueError, match="Archive constraint violation \\(--strict-rescue\\)"):
+            packager.package()
+
+        assert not out_zip.exists()
+
+    def test_strict_rescue_succeeds_when_files_rescued(self, tmp_path: Path) -> None:
+        """Verifies --strict-rescue succeeds when at least one file is rescued."""
+        source = tmp_path / "strict_ok_proj"
+        source.mkdir()
+        out_dir = source / "out"
+        out_dir.mkdir()
+        (out_dir / "report.pdf").write_text("pdf content")
+
+        out_zip = tmp_path / "out.zip"
+        config = PackagerConfig(
+            source=source,
+            output=out_zip,
+            name="strict_ok",
+            preset_name="none",
+            rules=("out/", "!out/*.pdf"),
+            strict_rescue=True,
+        )
+        packager = ZipPackager(config)
+        result = packager.package()
+        assert result.exists()
+
+    def test_max_size_raises_and_unlinks_when_exceeded(self, tmp_path: Path) -> None:
+        """Verifies --max-size unlinks output and raises ValueError when size threshold is exceeded."""
+        source = tmp_path / "big_proj"
+        source.mkdir()
+        (source / "large.bin").write_bytes(b"A" * 5000)
+
+        out_zip = tmp_path / "out.zip"
+        config = PackagerConfig(
+            source=source,
+            output=out_zip,
+            name="big_test",
+            preset_name="none",
+            compression=0,
+            max_size=1000,
+        )
+        packager = ZipPackager(config)
+        with pytest.raises(ValueError, match="Archive constraint violation \\(--max-size\\)"):
+            packager.package()
+
+        assert not out_zip.exists()
+
+    def test_cli_constraints_options(self, tmp_path: Path) -> None:
+        """Verifies CLI flags for --check-empty, --strict-rescue, and --max-size via CliRunner."""
+        from typer.testing import CliRunner
+
+        from zipdir.cli import app
+
+        source = tmp_path / "cli_proj"
+        source.mkdir()
+        (source / "file.txt").write_text("content")
+
+        runner = CliRunner()
+
+        # 1. --check-empty failure
+        res_empty = runner.invoke(app, [str(source), "--check-empty", "-r", "*.txt"])
+        assert res_empty.exit_code == 1
+        assert "Archive constraint violation (--check-empty)" in res_empty.stderr
+
+        # 2. --strict-rescue failure
+        res_strict = runner.invoke(app, [str(source), "--strict-rescue", "-r", "!missing/*.pdf"])
+        assert res_strict.exit_code == 1
+        assert "Archive constraint violation (--strict-rescue)" in res_strict.stderr
+
+        # 3. --max-size failure
+        res_size = runner.invoke(app, [str(source), "--max-size", "10B", "-f"])
+        assert res_size.exit_code == 1
+        assert "Archive constraint violation (--max-size)" in res_size.stderr
