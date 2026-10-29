@@ -3,7 +3,7 @@
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from zipdir.models import PackagerConfig, PresetModel
+from zipdir.models import PackagerConfig, PathExplanation, PresetModel
 
 
 class IReporter:
@@ -30,5 +30,12 @@ class IReporter:
         entries: Sequence[tuple[Path, str]],
         rescued_files: Sequence[tuple[str, str]],
         excluded_files: Sequence[str],
+    ) -> None:
+        raise NotImplementedError
+
+    def print_explanation(
+        self,
+        explanation: PathExplanation,
+        preset_name: str = "",
     ) -> None:
         raise NotImplementedError

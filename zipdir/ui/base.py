@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from zipdir.interfaces.ui import IReporter
-from zipdir.models import PackagerConfig, PresetModel
+from zipdir.models import PackagerConfig, PathExplanation, PresetModel
 
 USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 
@@ -120,6 +120,63 @@ class ConsoleReporter(IReporter):
         print(f"  {self._dim('Path:')}     {self._cyan(str(output))}")
         print(f"  {self._dim('Preset:')}   {config.preset_name} ({len(config.rules)} rules)")
         print(f"  {self._dim('Members:')}  {file_count} files, {dir_count} directories")
+
+    def print_explanation(
+        self,
+        explanation: PathExplanation,
+        preset_name: str = "",
+    ) -> None:
+        """Render step-by-step rule evaluation diagnosis and state transition trace."""
+        print(
+            f"\n{self._bold('Rule Evaluation Diagnostic')} for '{self._cyan(explanation.rel_path.as_posix())}':"
+        )
+        if preset_name:
+            print(f"  {self._dim('Effective Preset:')} {preset_name}")
+        print()
+
+        if not explanation.steps:
+            print(f"  {self._dim('(No rules matched this path)')}\n")
+        else:
+            print(self._bold("Transition Trace:"))
+            for idx, step in enumerate(explanation.steps, 1):
+                target_kind = "Ancestor" if step.is_ancestor else "Target"
+                kind_badge = (
+                    self._yellow(step.kind.name)
+                    if step.kind.name == "EXCLUDE"
+                    else self._cyan(step.kind.name)
+                )
+                print(
+                    f"  [{idx}] {target_kind} '{step.target.as_posix()}' matched rule '{step.rule.raw}' ({kind_badge})"
+                )
+                state_str = "EXCLUDED" if step.is_excluded_after else "INCLUDED / RESCUED"
+                anc_info = (
+                    f" (shallowest: '{step.shallowest_excluded_ancestor}')"
+                    if step.shallowest_excluded_ancestor
+                    else ""
+                )
+                print(f"      -> State: {state_str}{self._dim(anc_info)}")
+            print()
+
+        status_str = (
+            self._yellow("EXCLUDED")
+            if explanation.result.is_excluded
+            else self._success("INCLUDED")
+        )
+        arc_str = (
+            explanation.result.arc_path.as_posix()
+            if explanation.result.arc_path is not None
+            else "(none)"
+        )
+        rule_str = (
+            explanation.result.matched_rule.raw
+            if explanation.result.matched_rule is not None
+            else "(none)"
+        )
+
+        print(self._bold("Final Decision:"))
+        print(f"  • Status:       {status_str}")
+        print(f"  • Archive Path: {self._cyan(arc_str)}")
+        print(f"  • Matched Rule: {rule_str}")
 
     def _success(self, text: str) -> str:
         return _c(text, "1;32", enabled=self.use_color)

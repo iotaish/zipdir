@@ -2,13 +2,14 @@
 
 import sys
 from collections.abc import Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Annotated
 
 import typer
 from typer._click.core import Context as ClickContext
 from typer.core import TyperCommand
 
+from zipdir.evaluator import PathEvaluator
 from zipdir.models import PackagerConfig, PresetModel
 from zipdir.output import OutputResolver, resolve_output_path
 from zipdir.packager import ZipPackager
@@ -166,6 +167,13 @@ def package(
             help="Freeze resolved rules directly into <source>/.zipignore and exit",
         ),
     ] = False,
+    explain: Annotated[
+        str | None,
+        typer.Option(
+            "--explain",
+            help="Trace and explain rule evaluation for a specific path relative to source and exit",
+        ),
+    ] = None,
 ) -> None:
     catalog = PresetCatalog()
     reporter = ConsoleReporter()
@@ -205,6 +213,20 @@ def package(
             target_file.write_text(bundle_text, encoding="utf-8")
             print(f"Frozen {len(combined_rules)} rules into {target_file}")
             return
+
+    if explain is not None:
+        raw_p = Path(explain).expanduser()
+        if raw_p.is_absolute() and raw_p.is_relative_to(source.resolve()):
+            rel_explain = PurePosixPath(raw_p.relative_to(source.resolve()).as_posix())
+        else:
+            clean_str = explain.strip().lstrip("/")
+            rel_explain = PurePosixPath(clean_str)
+
+        is_dir = explain.endswith("/") or (source / rel_explain).is_dir()
+        evaluator = PathEvaluator(rules=combined_rules)
+        explanation = evaluator.explain(rel_explain, is_dir=is_dir)
+        reporter.print_explanation(explanation, preset_name=effective_preset_name)
+        return
 
     resolved_output = resolve_output_path(
         source,
