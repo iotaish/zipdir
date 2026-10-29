@@ -1,6 +1,6 @@
 [project]
 name = "zipdir"
-version = "0.2.0"
+version = "0.1.0"
 description = "Package a directory into a clean ZIP archive with .zipignore rules and smart path remapping"
 requires-python = ">=3.12"
 dependencies = [
