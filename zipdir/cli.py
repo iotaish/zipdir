@@ -230,20 +230,11 @@ def package(
             sys.stdout.write(bundle_text)
             return
         if freeze_rules:
-            target_file = source / ".zipignore"
-            target_file.write_text(bundle_text, encoding="utf-8")
-            print(f"Frozen {len(combined_rules)} rules into {target_file}")
+            _freeze_rules_bundle(source / ".zipignore", bundle_text, len(combined_rules))
             return
 
     if explain is not None:
-        raw_p = Path(explain).expanduser()
-        if raw_p.is_absolute() and raw_p.is_relative_to(source.resolve()):
-            rel_explain = PurePosixPath(raw_p.relative_to(source.resolve()).as_posix())
-        else:
-            clean_str = explain.strip().lstrip("/")
-            rel_explain = PurePosixPath(clean_str)
-
-        is_dir = explain.endswith("/") or (source / rel_explain).is_dir()
+        rel_explain, is_dir = _resolve_explain_target(explain, source)
         evaluator = PathEvaluator(rules=combined_rules)
         explanation = evaluator.explain(rel_explain, is_dir=is_dir)
         reporter.print_explanation(explanation, preset_name=effective_preset_name)
@@ -327,3 +318,19 @@ def _validate_archive_name(name: str | None, source: Path) -> str:
             raise typer.Exit(code=1)
         case False:
             return archive_name
+
+
+def _resolve_explain_target(explain: str, source: Path) -> tuple[PurePosixPath, bool]:
+    raw_p = Path(explain).expanduser()
+    if raw_p.is_absolute() and raw_p.is_relative_to(source.resolve()):
+        rel_explain = PurePosixPath(raw_p.relative_to(source.resolve()).as_posix())
+    else:
+        clean_str = explain.strip().lstrip("/")
+        rel_explain = PurePosixPath(clean_str)
+    is_dir = explain.endswith("/") or (source / rel_explain).is_dir()
+    return rel_explain, is_dir
+
+
+def _freeze_rules_bundle(target_file: Path, bundle_text: str, rule_count: int) -> None:
+    target_file.write_text(bundle_text, encoding="utf-8")
+    print(f"Frozen {rule_count} rules into {target_file}")

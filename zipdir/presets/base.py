@@ -44,19 +44,14 @@ def flatten_scoped_rule(scoped: ScopedRule) -> str:
         b1 = m.group("b1")
         to = m.group("to").strip()
         pat = m.group("pattern").strip()
-        if to and not to.startswith(("/", "./", "../")):
-            scoped_to = f"{scope_str}/{to}"
-        else:
-            scoped_to = to
+        scoped_to = f"{scope_str}/{to}" if (to and not to.startswith(("/", "./", "../"))) else to
         scoped_pat = pat.lstrip("/")
-        new_pat = f"{scope_str}/{scoped_pat}"
-        return f"{b1}{scoped_to}!{new_pat}"
-    else:
-        clean_rule = stripped.lstrip("/")
-        if "/" in clean_rule:
-            return f"{scope_str}/{clean_rule}"
-        else:
-            return f"{scope_str}/**/{clean_rule}"
+        return f"{b1}{scoped_to}!{scope_str}/{scoped_pat}"
+
+    clean_rule = stripped.lstrip("/")
+    if "/" in clean_rule:
+        return f"{scope_str}/{clean_rule}"
+    return f"{scope_str}/**/{clean_rule}"
 
 
 class PresetCatalog(IPresetCatalog):
