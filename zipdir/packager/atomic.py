@@ -2,8 +2,10 @@
 
 import os
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 
+from zipdir.models import RuleKind, format_size
 from zipdir.packager.phagocytic import ZipPackager as PhagocyticZipPackager
 
 
@@ -20,6 +22,8 @@ class ZipPackager(PhagocyticZipPackager):
                 pass
 
         entries = list(self.collect_members())
+        self._validate_pre_flight_constraints(entries)
+
         match self.config.dry_run:
             case True:
                 self.reporter.print_dry_run(
@@ -28,6 +32,7 @@ class ZipPackager(PhagocyticZipPackager):
                 return output
             case False:
                 self._write_atomic_archive(output, entries)
+                self._validate_post_flight_constraints(output)
                 self.reporter.print_summary(
                     self.config, output, entries, self.rescued_files, self.excluded_files
                 )
@@ -59,3 +64,23 @@ class ZipPackager(PhagocyticZipPackager):
             output.hardlink_to(temp_path)
         finally:
             temp_path.unlink(missing_ok=True)
+
+    def _validate_pre_flight_constraints(self, entries: Sequence[tuple[Path, str]]) -> None:
+        file_count = sum(1 for _, arcname in entries if not arcname.endswith("/"))
+        if self.config.check_empty and file_count == 0:
+            raise ValueError("Archive constraint violation (--check-empty): 0 files collected")
+
+        has_rescue_rules = any(r.kind == RuleKind.RESCUE for r in self.compiled_rules)
+        if self.config.strict_rescue and has_rescue_rules and not self.rescued_files:
+            raise ValueError(
+                "Archive constraint violation (--strict-rescue): specified rescue rules did not match any files"
+            )
+
+    def _validate_post_flight_constraints(self, output: Path) -> None:
+        if self.config.max_size is not None:
+            actual_size = output.stat().st_size
+            if actual_size > self.config.max_size:
+                output.unlink(missing_ok=True)
+                raise ValueError(
+                    f"Archive constraint violation (--max-size): size {format_size(actual_size)} exceeds limit of {format_size(self.config.max_size)}"
+                )

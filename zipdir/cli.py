@@ -10,7 +10,7 @@ from typer._click.core import Context as ClickContext
 from typer.core import TyperCommand
 
 from zipdir.evaluator import PathEvaluator
-from zipdir.models import PackagerConfig, PresetModel
+from zipdir.models import PackagerConfig, PresetModel, parse_size
 from zipdir.output import OutputResolver, resolve_output_path
 from zipdir.packager import ZipPackager
 from zipdir.presets import PresetCatalog
@@ -174,6 +174,27 @@ def package(
             help="Trace and explain rule evaluation for a specific path relative to source and exit",
         ),
     ] = None,
+    max_size: Annotated[
+        str | None,
+        typer.Option(
+            "--max-size",
+            help="Maximum allowed ZIP archive size (e.g. 10MB, 500KB); exits with error if exceeded",
+        ),
+    ] = None,
+    check_empty: Annotated[
+        bool,
+        typer.Option(
+            "--check-empty",
+            help="Exit with error if resulting archive contains 0 files",
+        ),
+    ] = False,
+    strict_rescue: Annotated[
+        bool,
+        typer.Option(
+            "--strict-rescue",
+            help="Exit with error if configured rescue rules (!...) did not match any files",
+        ),
+    ] = False,
 ) -> None:
     catalog = PresetCatalog()
     reporter = ConsoleReporter()
@@ -236,6 +257,14 @@ def package(
         force=force,
     )
 
+    parsed_max_size: int | None = None
+    if max_size is not None:
+        try:
+            parsed_max_size = parse_size(max_size)
+        except ValueError as e:
+            print(f"{color_yellow('Error:')} {e}", file=sys.stderr)
+            raise typer.Exit(code=1)
+
     config = PackagerConfig(
         source=source,
         output=resolved_output,
@@ -247,6 +276,9 @@ def package(
         dry_run=dry_run,
         force=force,
         verbose=verbose,
+        max_size=parsed_max_size,
+        check_empty=check_empty,
+        strict_rescue=strict_rescue,
     )
 
     packager = ZipPackager(config, reporter=reporter)
