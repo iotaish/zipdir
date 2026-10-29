@@ -12,6 +12,7 @@ GLOB_TOKEN_REGEX = re.compile(
     (?P<star>\*)|
     (?P<question>\?)|
     (?P<bracket>\[(!|\^)?.*?\])|
+    (?P<brace>\{[^{}]*,[^{}]*\})|
     (?P<escape>\\.)|
     (?P<meta>[.+()^${}|])|
     (?P<literal>[^\\*?\[.+()^${}|/]+)|

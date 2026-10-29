@@ -12,6 +12,16 @@ from zipdir.glob.base import (
 )
 
 
+def _translate_brace(token: str) -> str:
+    inner = token[1:-1]
+    parts = inner.split(",")
+    translated: list[str] = []
+    for p in parts:
+        esc = re.escape(p).replace(r"\*", "[^/]*").replace(r"\?", "[^/]")
+        translated.append(esc)
+    return f"(?:{'|'.join(translated)})"
+
+
 def _translate_bracket(token: str) -> str:
     inner = token[1:-1]
     return f"[^{inner[1:]}]" if inner.startswith("!") else token
@@ -22,6 +32,7 @@ DEFAULT_TOKEN_TRANSLATORS: dict[str, Callable[[str], str]] = {
     "globstar_slash": lambda _: "(?:.*/)?",
     "globstar": lambda _: ".*",
     "bracket": _translate_bracket,
+    "brace": _translate_brace,
 }
 
 
