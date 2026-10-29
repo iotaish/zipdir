@@ -309,7 +309,7 @@ class TestInterfacesDirectoryAndProgressiveInheritance:
             (IRemapStrategy, LocalScopeRemapStrategy, ["matches", "remap"]),
             (IRemapStrategy, ParentClimbRemapStrategy, ["matches", "remap"]),
             (IRemapStrategy, ExileRemapStrategy, ["matches", "remap"]),
-            (IPathEvaluator, PathEvaluator, ["evaluate", "should_prune"]),
+            (IPathEvaluator, PathEvaluator, ["evaluate", "should_prune", "explain"]),
             (IOutputTargetStrategy, BareParentOutputStrategy, ["matches", "classify"]),
             (IOutputTargetStrategy, AbsoluteOutputStrategy, ["matches", "classify"]),
             (IOutputTargetStrategy, CwdRelativeOutputStrategy, ["matches", "classify"]),
@@ -334,7 +334,7 @@ class TestInterfacesDirectoryAndProgressiveInheritance:
             (
                 IReporter,
                 ConsoleReporter,
-                ["print_presets", "print_dry_run", "print_summary"],
+                ["print_presets", "print_dry_run", "print_summary", "print_explanation"],
             ),
             (IArchiveEntryWriter, RootDirArchiveWriter, ["matches", "write"]),
             (IArchiveEntryWriter, SymlinkArchiveWriter, ["matches", "write"]),

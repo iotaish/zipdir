@@ -1436,3 +1436,104 @@ class TestRuleBundle:
         content = target_file.read_text(encoding="utf-8")
         assert "# .zipignore: self-contained rule bundle for 'frozen_proj'" in content
         assert "frozen_test/" in content
+
+
+# ==============================================================================
+# 12. Rule Evaluation Diagnostic Tests (--explain)
+# ==============================================================================
+class TestRuleExplanation:
+    """Verifies diagnostic tracing and explainability of rule evaluation."""
+
+    def test_explain_ancestor_and_target_transitions(self) -> None:
+        """Verifies step-by-step recording of ancestor exclusion and target rescue."""
+        from zipdir import PathEvaluator, RuleKind, compile_rule
+
+        rules = [
+            compile_rule("out/") or pytest.fail("rule failed"),
+            compile_rule("submitted_*.pdf!out/*.pdf") or pytest.fail("rule failed"),
+        ]
+        evaluator = PathEvaluator(rules)
+        exp = evaluator.explain(PurePosixPath("out/alice.pdf"))
+
+        assert exp.rel_path == PurePosixPath("out/alice.pdf")
+        assert not exp.is_dir
+        assert len(exp.steps) == 2
+
+        # Step 1: ancestor out excluded
+        assert exp.steps[0].is_ancestor
+        assert exp.steps[0].target == PurePosixPath("out")
+        assert exp.steps[0].kind == RuleKind.EXCLUDE
+        assert exp.steps[0].is_excluded_after
+        assert exp.steps[0].shallowest_excluded_ancestor == PurePosixPath("out")
+
+        # Step 2: target out/alice.pdf rescued
+        assert not exp.steps[1].is_ancestor
+        assert exp.steps[1].target == PurePosixPath("out/alice.pdf")
+        assert exp.steps[1].kind == RuleKind.RESCUE
+        assert not exp.steps[1].is_excluded_after
+
+        # Final result
+        assert not exp.result.is_excluded
+        assert exp.result.arc_path == PurePosixPath("submitted_alice.pdf")
+
+    def test_explain_excluded_without_rescue(self) -> None:
+        """Verifies trace for purely excluded file."""
+        from zipdir import PathEvaluator, compile_rule
+
+        rules = [compile_rule("*.o") or pytest.fail("rule failed")]
+        evaluator = PathEvaluator(rules)
+        exp = evaluator.explain(PurePosixPath("build/main.o"))
+
+        assert exp.result.is_excluded
+        assert exp.result.arc_path is None
+        assert len(exp.steps) == 1
+        assert exp.steps[0].kind.name == "EXCLUDE"
+
+    def test_explain_no_matching_rules(self) -> None:
+        """Verifies trace when no rules match path."""
+        from zipdir import PathEvaluator, compile_rule
+
+        rules = [compile_rule("*.tmp") or pytest.fail("rule failed")]
+        evaluator = PathEvaluator(rules)
+        exp = evaluator.explain(PurePosixPath("main.py"))
+
+        assert len(exp.steps) == 0
+        assert not exp.result.is_excluded
+        assert exp.result.arc_path == PurePosixPath("main.py")
+
+    def test_cli_explain_option_prints_diagnostic_and_exits(self, tmp_path: Path) -> None:
+        """Verifies --explain prints diagnostic trace and skips ZIP creation."""
+        from typer.testing import CliRunner
+
+        from zipdir.cli import app
+
+        source = tmp_path / "diag_proj"
+        source.mkdir()
+        out_dir = source / "out"
+        out_dir.mkdir()
+        (out_dir / "alice.pdf").write_text("dummy")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                str(source),
+                "--explain",
+                "out/alice.pdf",
+                "-r",
+                "out/",
+                "-r",
+                "submitted_*.pdf!out/*.pdf",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Rule Evaluation Diagnostic" in result.stdout
+        assert "out/alice.pdf" in result.stdout
+        assert "Transition Trace:" in result.stdout
+        assert "Final Decision:" in result.stdout
+        assert "INCLUDED" in result.stdout
+
+        # Verify no zip file created
+        zip_candidates = list(tmp_path.glob("*.zip"))
+        assert len(zip_candidates) == 0
