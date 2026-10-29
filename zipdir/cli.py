@@ -152,6 +152,20 @@ def package(
         bool,
         typer.Option("--dry-run", help="Show resulting members without creating ZIP"),
     ] = False,
+    dump_rules: Annotated[
+        bool,
+        typer.Option(
+            "--dump-rules",
+            help="Dump resolved, linearized, and squeezed rules as standalone .zipignore to stdout and exit",
+        ),
+    ] = False,
+    freeze_rules: Annotated[
+        bool,
+        typer.Option(
+            "--freeze-rules",
+            help="Freeze resolved rules directly into <source>/.zipignore and exit",
+        ),
+    ] = False,
 ) -> None:
     catalog = PresetCatalog()
     reporter = ConsoleReporter()
@@ -176,6 +190,21 @@ def package(
     except ValueError as e:
         print(f"{color_yellow('Error:')} {e}", file=sys.stderr)
         raise typer.Exit(code=1)
+
+    if dump_rules or freeze_rules:
+        bundle_text = catalog.format_bundle(
+            source_name=source.name,
+            preset_name=effective_preset_name,
+            rules=combined_rules,
+        )
+        if dump_rules:
+            sys.stdout.write(bundle_text)
+            return
+        if freeze_rules:
+            target_file = source / ".zipignore"
+            target_file.write_text(bundle_text, encoding="utf-8")
+            print(f"Frozen {len(combined_rules)} rules into {target_file}")
+            return
 
     resolved_output = resolve_output_path(
         source,
