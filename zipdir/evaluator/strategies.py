@@ -1,5 +1,7 @@
 """Concrete rule transition and 3-tier coordinate remapping strategies."""
 
+import re
+from collections.abc import Sequence
 from pathlib import PurePosixPath
 
 from zipdir.interfaces.evaluator import (
@@ -210,7 +212,81 @@ class ExileRemapStrategy(IRemapStrategy):
         return _combine_dest(normalize_posix_path(raw_dest), ctx.sub_path, is_rename=is_rename)
 
 
+class TemplateRenameRemapStrategy(IRemapStrategy):
+    """Strategy for dynamic template renaming containing "*" or "$1" placeholders."""
+
+    coordinate_strategies: Sequence[IRemapStrategy]
+
+    def __init__(self, coordinate_strategies: Sequence[IRemapStrategy] | None = None) -> None:
+        self.coordinate_strategies = (
+            coordinate_strategies
+            if coordinate_strategies is not None
+            else (
+                ArchiveRootRemapStrategy(),
+                LocalScopeRemapStrategy(),
+                ParentClimbRemapStrategy(),
+                ExileRemapStrategy(),
+            )
+        )
+
+    def matches(self, target: str) -> bool:
+        return "*" in target or bool(re.search(r"\$[0-9]+", target))
+
+    def remap(self, ctx: RemapContext) -> PurePosixPath:
+        captures = self._extract_captures(ctx.rescued_by.pattern, ctx.rel_path)
+        expanded_target = self._render_template(ctx.rescued_by.target, captures, ctx.rel_path.stem)
+        expanded_rule = ctx.rescued_by.model_copy(update={"target": expanded_target})
+        expanded_ctx = ctx.model_copy(update={"rescued_by": expanded_rule})
+
+        for strategy in self.coordinate_strategies:
+            if strategy.matches(expanded_target):
+                return strategy.remap(expanded_ctx)
+        return ExileRemapStrategy().remap(expanded_ctx)
+
+    def _extract_captures(self, pattern: str, rel_path: PurePosixPath) -> list[str]:
+        clean = pattern.rstrip("/")
+        tokens = re.split(r"(\**|\*|\?)", clean)
+        regex_parts: list[str] = []
+        for tok in tokens:
+            match tok:
+                case "**":
+                    regex_parts.append("(.*)")
+                case "*":
+                    regex_parts.append("([^/]*)")
+                case "?":
+                    regex_parts.append("([^/])")
+                case str() if tok:
+                    regex_parts.append(re.escape(tok))
+                case _:
+                    pass
+
+        rx_str = "".join(regex_parts)
+        anchored_rx = rx_str if rx_str.startswith("^") else f"(?:^|/){rx_str}$"
+        matched = re.compile(anchored_rx).search(rel_path.as_posix())
+        if matched:
+            return list(matched.groups())
+        return [rel_path.stem]
+
+    def _render_template(self, target: str, captures: list[str], default_stem: str) -> str:
+        def sub_dollar(m: re.Match[str]) -> str:
+            idx = int(m.group(1)) - 1
+            return captures[idx] if 0 <= idx < len(captures) else default_stem
+
+        result = re.sub(r"\$([0-9]+)", sub_dollar, target)
+
+        if "*" in result:
+            star_parts = result.split("*")
+            new_parts = [star_parts[0]]
+            for i, part in enumerate(star_parts[1:]):
+                replacement = captures[i] if i < len(captures) else default_stem
+                new_parts.append(replacement + part)
+            result = "".join(new_parts)
+
+        return result
+
+
 DEFAULT_REMAP_STRATEGIES: tuple[IRemapStrategy, ...] = (
+    TemplateRenameRemapStrategy(),
     PreserveHierarchyRemapStrategy(),
     ArchiveRootRemapStrategy(),
     LocalScopeRemapStrategy(),

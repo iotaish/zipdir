@@ -12,6 +12,7 @@ from zipdir.evaluator import (
     RedeleteTransition,
     RemapContext,
     RescueTransition,
+    TemplateRenameRemapStrategy,
     evaluate_path,
 )
 from zipdir.glob import GlobExpression
@@ -115,6 +116,7 @@ __all__ = [
     "ParsedRule",
     "PathEvaluator",
     "PreserveHierarchyRemapStrategy",
+    "TemplateRenameRemapStrategy",
     "PresetCatalog",
     "PresetModel",
     "RedeleteTransition",

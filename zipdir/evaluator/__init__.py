@@ -17,6 +17,7 @@ from zipdir.evaluator.strategies import (
     RedeleteTransition,
     RemapContext,
     RescueTransition,
+    TemplateRenameRemapStrategy,
 )
 from zipdir.models import IgnoreRule, ScopedRule
 
@@ -42,6 +43,7 @@ __all__ = [
     "ParentClimbRemapStrategy",
     "PathEvaluator",
     "PreserveHierarchyRemapStrategy",
+    "TemplateRenameRemapStrategy",
     "RedeleteTransition",
     "RemapContext",
     "RescueTransition",
