@@ -53,7 +53,26 @@ class PathEvaluator(IPathEvaluator):
         """Evaluate path against rules, returning EvaluationResult(is_excluded, arc_path, matched_rule)."""
         state = self._evaluate_ancestors(rel_path.parts)
         self._evaluate_target(rel_path, is_dir, state)
+        return self._build_result(state, rel_path)
 
+    def should_prune(self, rel_dir: PurePosixPath) -> bool:
+        """Minimal base pruning behavior (overridden in pruning.py)."""
+        return False
+
+    def explain(self, rel_path: PurePosixPath, is_dir: bool = False) -> PathExplanation:
+        """Trace each step of rule evaluation, capturing transitions and final result."""
+        state = EvaluationState()
+        steps: list[ExplanationStep] = []
+        self._evaluate_ancestors(rel_path.parts, state=state, steps=steps)
+        self._evaluate_target(rel_path, is_dir, state=state, steps=steps)
+        return PathExplanation(
+            rel_path=rel_path,
+            is_dir=is_dir,
+            steps=tuple(steps),
+            result=self._build_result(state, rel_path),
+        )
+
+    def _build_result(self, state: EvaluationState, rel_path: PurePosixPath) -> EvaluationResult:
         match (state.is_excluded, state.rescued_by):
             case (True, _):
                 return EvaluationResult(True, None, state.excluded_by)
@@ -65,72 +84,6 @@ class PathEvaluator(IPathEvaluator):
                 )
                 return EvaluationResult(False, arc_rel, rescued_rule)
 
-    def should_prune(self, rel_dir: PurePosixPath) -> bool:
-        """Minimal base pruning behavior (overridden in pruning.py)."""
-        return False
-
-    def explain(self, rel_path: PurePosixPath, is_dir: bool = False) -> PathExplanation:
-        """Trace each step of rule evaluation, capturing transitions and final result."""
-        steps: list[ExplanationStep] = []
-        state = EvaluationState()
-        parts = rel_path.parts
-
-        for k in range(1, len(parts)):
-            anc = PurePosixPath(*parts[:k])
-            anc_str = anc.as_posix()
-            for r in self.rules:
-                match_str = self._scoped_target(anc, anc_str, r.scope)
-                if match_str is not None and r.regex.search(match_str):
-                    self.transitions[r.kind].apply(state, r, ancestor=anc)
-                    steps.append(
-                        ExplanationStep(
-                            target=anc,
-                            is_ancestor=True,
-                            rule=r,
-                            kind=r.kind,
-                            is_excluded_after=state.is_excluded,
-                            shallowest_excluded_ancestor=state.shallowest_excluded_ancestor,
-                            action_description=f"Ancestor '{anc.as_posix()}' matched '{r.raw}' ({r.kind.name})",
-                        )
-                    )
-
-        posix_str = rel_path.as_posix()
-        for r in self.rules:
-            if r.is_dir_only and not is_dir:
-                continue
-            target_str = self._scoped_target(rel_path, posix_str, r.scope)
-            if target_str is not None and r.regex.search(target_str):
-                self.transitions[r.kind].apply(state, r)
-                steps.append(
-                    ExplanationStep(
-                        target=rel_path,
-                        is_ancestor=False,
-                        rule=r,
-                        kind=r.kind,
-                        is_excluded_after=state.is_excluded,
-                        shallowest_excluded_ancestor=state.shallowest_excluded_ancestor,
-                        action_description=f"Target '{rel_path.as_posix()}' matched '{r.raw}' ({r.kind.name})",
-                    )
-                )
-
-        match (state.is_excluded, state.rescued_by):
-            case (True, _):
-                res = EvaluationResult(True, None, state.excluded_by)
-            case (False, None):
-                res = EvaluationResult(False, rel_path, None)
-            case (False, IgnoreRule() as rescued_rule):
-                arc_rel = self._resolve_rescued_path(
-                    rel_path, rescued_rule, state.shallowest_excluded_ancestor
-                )
-                res = EvaluationResult(False, arc_rel, rescued_rule)
-
-        return PathExplanation(
-            rel_path=rel_path,
-            is_dir=is_dir,
-            steps=tuple(steps),
-            result=res,
-        )
-
     def _resolve_rescued_path(
         self,
         rel_path: PurePosixPath,
@@ -140,19 +93,40 @@ class PathEvaluator(IPathEvaluator):
         """Base hook returning original relative path (extended in remapped.py)."""
         return rel_path
 
-    def _evaluate_ancestors(self, parts: tuple[str, ...]) -> EvaluationState:
-        state = EvaluationState()
+    def _evaluate_ancestors(
+        self,
+        parts: tuple[str, ...],
+        state: EvaluationState | None = None,
+        steps: list[ExplanationStep] | None = None,
+    ) -> EvaluationState:
+        active_state = state if state is not None else EvaluationState()
         for k in range(1, len(parts)):
             anc = PurePosixPath(*parts[:k])
             anc_str = anc.as_posix()
             for r in self.rules:
                 match_str = self._scoped_target(anc, anc_str, r.scope)
                 if match_str is not None and r.regex.search(match_str):
-                    self.transitions[r.kind].apply(state, r, ancestor=anc)
-        return state
+                    self.transitions[r.kind].apply(active_state, r, ancestor=anc)
+                    if steps is not None:
+                        steps.append(
+                            ExplanationStep(
+                                target=anc,
+                                is_ancestor=True,
+                                rule=r,
+                                kind=r.kind,
+                                is_excluded_after=active_state.is_excluded,
+                                shallowest_excluded_ancestor=active_state.shallowest_excluded_ancestor,
+                                action_description=f"Ancestor '{anc.as_posix()}' matched '{r.raw}' ({r.kind.name})",
+                            )
+                        )
+        return active_state
 
     def _evaluate_target(
-        self, rel_path: PurePosixPath, is_dir: bool, state: EvaluationState
+        self,
+        rel_path: PurePosixPath,
+        is_dir: bool,
+        state: EvaluationState,
+        steps: list[ExplanationStep] | None = None,
     ) -> None:
         posix_str = rel_path.as_posix()
         for r in self.rules:
@@ -161,6 +135,18 @@ class PathEvaluator(IPathEvaluator):
             target_str = self._scoped_target(rel_path, posix_str, r.scope)
             if target_str is not None and r.regex.search(target_str):
                 self.transitions[r.kind].apply(state, r)
+                if steps is not None:
+                    steps.append(
+                        ExplanationStep(
+                            target=rel_path,
+                            is_ancestor=False,
+                            rule=r,
+                            kind=r.kind,
+                            is_excluded_after=state.is_excluded,
+                            shallowest_excluded_ancestor=state.shallowest_excluded_ancestor,
+                            action_description=f"Target '{rel_path.as_posix()}' matched '{r.raw}' ({r.kind.name})",
+                        )
+                    )
 
     def _scoped_target(
         self, path: PurePosixPath, posix_str: str, scope: PurePosixPath
