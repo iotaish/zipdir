@@ -1322,3 +1322,117 @@ class TestAnalogicalCoordinateAndCascade:
         assert "warning: C3 linearization conflict" in captured.err
         assert order[-1] == "z"
         assert set(order) == {"a", "b", "x", "y", "z"}
+
+
+# ==============================================================================
+# 11. Standalone Rule Bundle Tests (--dump-rules / --freeze-rules)
+# ==============================================================================
+class TestRuleBundle:
+    """Verifies standalone rule bundle dumping (--dump-rules) and freezing (--freeze-rules)."""
+
+    def test_flatten_scoped_rule_variations(self) -> None:
+        """Verifies converting ScopedRule into root-level .zipignore representation."""
+        from zipdir.models import ScopedRule
+        from zipdir.presets import flatten_scoped_rule
+
+        # Root-level scoped rules remain untouched
+        assert flatten_scoped_rule(ScopedRule(scope=PurePosixPath("."), rule="*.pyc")) == "*.pyc"
+        assert flatten_scoped_rule(ScopedRule(scope=PurePosixPath(""), rule="out/")) == "out/"
+
+        # Subdirectory excludes
+        assert (
+            flatten_scoped_rule(ScopedRule(scope=PurePosixPath("client"), rule="dist/"))
+            == "client/dist/"
+        )
+        assert (
+            flatten_scoped_rule(ScopedRule(scope=PurePosixPath("client"), rule="*.map"))
+            == "client/**/*.map"
+        )
+
+        # Subdirectory rescues
+        assert (
+            flatten_scoped_rule(ScopedRule(scope=PurePosixPath("client"), rule="!out/*.pdf"))
+            == "!client/out/*.pdf"
+        )
+        assert (
+            flatten_scoped_rule(ScopedRule(scope=PurePosixPath("client"), rule="bundle/!out/*.pdf"))
+            == "client/bundle/!client/out/*.pdf"
+        )
+        assert (
+            flatten_scoped_rule(ScopedRule(scope=PurePosixPath("client"), rule="/dist/!out/*.pdf"))
+            == "/dist/!client/out/*.pdf"
+        )
+        assert (
+            flatten_scoped_rule(
+                ScopedRule(scope=PurePosixPath("client"), rule="final.pdf!out/report.pdf")
+            )
+            == "client/final.pdf!client/out/report.pdf"
+        )
+        assert (
+            flatten_scoped_rule(ScopedRule(scope=PurePosixPath("client"), rule="!!out/*.pdf"))
+            == "!!client/out/*.pdf"
+        )
+
+    def test_format_bundle_header_and_rules(self) -> None:
+        """Verifies bundle text headers and sequential rule listing."""
+        from zipdir.models import ScopedRule
+        from zipdir.presets import PresetCatalog
+
+        catalog = PresetCatalog()
+        rules = [
+            ScopedRule(scope=PurePosixPath("."), rule="*.pyc"),
+            ScopedRule(scope=PurePosixPath("sub"), rule="build/"),
+            "custom_rule.log",
+        ]
+        text = catalog.format_bundle("testapp", "clean", rules)
+        assert "# .zipignore: self-contained rule bundle for 'testapp'" in text
+        assert "# base-preset: clean" in text
+        assert "*.pyc" in text
+        assert "sub/build/" in text
+        assert "custom_rule.log" in text
+
+    def test_cli_dump_rules_prints_to_stdout_and_exits(self, tmp_path: Path) -> None:
+        """Verifies --dump-rules prints self-contained .zipignore without creating ZIP archive."""
+        from typer.testing import CliRunner
+
+        from zipdir.cli import app
+
+        source = tmp_path / "app"
+        source.mkdir()
+        (source / "data.txt").write_text("content")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app, [str(source), "--dump-rules", "-p", "clean", "-r", "!extra/*.pdf"]
+        )
+        assert result.exit_code == 0
+        assert "# .zipignore: self-contained rule bundle for 'app'" in result.stdout
+        assert "# base-preset: clean" in result.stdout
+        assert "!extra/*.pdf" in result.stdout
+
+        # Verify no zip file created
+        zip_candidates = list(tmp_path.glob("*.zip"))
+        assert len(zip_candidates) == 0
+
+    def test_cli_freeze_rules_writes_to_source_zipignore(self, tmp_path: Path) -> None:
+        """Verifies --freeze-rules creates <source>/.zipignore with complete resolved rules."""
+        from typer.testing import CliRunner
+
+        from zipdir.cli import app
+
+        source = tmp_path / "frozen_proj"
+        source.mkdir()
+        (source / "main.py").write_text("print('hello')")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app, [str(source), "--freeze-rules", "-p", "clean", "-r", "frozen_test/"]
+        )
+        assert result.exit_code == 0
+        assert "Frozen" in result.stdout
+
+        target_file = source / ".zipignore"
+        assert target_file.is_file()
+        content = target_file.read_text(encoding="utf-8")
+        assert "# .zipignore: self-contained rule bundle for 'frozen_proj'" in content
+        assert "frozen_test/" in content

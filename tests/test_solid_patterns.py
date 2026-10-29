@@ -328,6 +328,7 @@ class TestInterfacesDirectoryAndProgressiveInheritance:
                     "linearize_presets",
                     "discover_sub_zipignores",
                     "resolve_cascade",
+                    "format_bundle",
                 ],
             ),
             (
