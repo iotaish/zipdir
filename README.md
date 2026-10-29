@@ -165,6 +165,11 @@ alias zipd='zipdir'
    - 多階層カスケード（Preset → Root → Subdir → CLI）において、指定したファイルやディレクトリが「どの階層のどのルールによって除外（EXCLUDE）・救出（RESCUE）・再除外（REDELETE）されたか」の内部状態遷移履歴と、最終的なアーカイブ内パス（`arc_path`）をステップ順にトレース表示します。
    - 意図しない除外や救出先リマップの衝突原因を一目で特定・デバッグできます。
 
+1. **アーカイブ提出制約ガードと事前・事後検証 (`--max-size` / `--check-empty` / `--strict-rescue`)**
+   - 大学の課題提出システム（Manaba / Moodle 等）やメール添付の容量制限（例: `--max-size 10MB`）を超過した場合にエラーで終了し、超過した未完全アーカイブを安全に破棄します。
+   - `--check-empty` で除外ルール設定ミスによる「空アーカイブ（0 ファイル）」の誤生成を未然に防ぎます。
+   - `--strict-rescue` で必須成果物の救出ルール（例: `!out/*.pdf`）が 1 件もマッチしなかった場合に非ゼロ終了し、ビルド失敗や生成漏れのまま提出してしまう事故を防止します。
+
 ## 4. 構文リファレンス
 
 ルールは各行に記述し、`#` で始まる行はコメントとして無視されます。
@@ -274,6 +279,9 @@ zipdir path/to/project -p clean -r '!out/*.pdf' --freeze-rules
 
 # 特定ファイルのルール評価と状態遷移（除外・救出・リマップ）を診断
 zipdir path/to/project -p clean -r '!out/*.pdf' --explain out/report.pdf
+
+# 提出容量制限ガード（10MB超過時エラー）と空アーカイブ・救出漏れ防止
+zipdir path/to/project -p report --max-size 10MB --check-empty --strict-rescue
 ```
 
 ### 7.2. CLI オプション一覧
@@ -293,6 +301,9 @@ zipdir path/to/project -p clean -r '!out/*.pdf' --explain out/report.pdf
 - `--dump-rules`: 解決・圧縮済みのルール列をスタンドアロンな `.zipignore` 形式で標準出力へダンプして終了
 - `--freeze-rules`: 解決・圧縮済みのルール列をプロジェクト直下の `.zipignore` へ直接書き出して終了
 - `--explain <path>`: 指定したパスのルール評価履歴（祖先除外・救出・リマップ）を診断表示して終了
+- `--max-size <size>`: アーカイブ最大許容サイズ（例: `10MB`, `500KB`, `1G`）を指定し超過時エラー終了
+- `--check-empty`: 収録ファイル数が 0 件の場合にエラー終了
+- `--strict-rescue`: 設定された救出ルール（`!pattern`）で 1 件も救出されなかった場合にエラー終了
 
 [インストール導入]: #1-インストール導入
 [uv-tool-インストール]: #11-uv-tool-によるインストール-推奨
