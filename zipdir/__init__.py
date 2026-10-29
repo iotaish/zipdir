@@ -73,6 +73,7 @@ from zipdir.presets import (
     DEFAULT_PRESET_DIRS,
     PresetCatalog,
     discover_sub_zipignores,
+    flatten_scoped_rule,
     load_presets,
     load_raw_zipignore_preset,
 )
@@ -136,6 +137,7 @@ __all__ = [
     "app",
     "compile_rule",
     "discover_sub_zipignores",
+    "flatten_scoped_rule",
     "evaluate_path",
     "format_size",
     "load_presets",

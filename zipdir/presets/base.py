@@ -1,6 +1,7 @@
 """Minimal concrete preset file parser and base cascade skeleton (base stage for progressive inheritance)."""
 
 import os
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PurePosixPath
@@ -25,6 +26,37 @@ def _as_preset_model(preset: PresetModel | Mapping[str, object]) -> PresetModel:
             return PresetModel.model_validate(d)
         case _:
             raise TypeError(f"Invalid preset type: {type(preset)}")
+
+
+def flatten_scoped_rule(scoped: ScopedRule) -> str:
+    """Convert a ScopedRule into an equivalent root-level .zipignore rule string."""
+    scope_str = scoped.scope.as_posix()
+    if scope_str in ("", "."):
+        return scoped.rule
+
+    stripped = scoped.rule.strip()
+    if stripped.startswith("#"):
+        comment = stripped.lstrip("#").strip()
+        return f"# [{scope_str}] {comment}"
+
+    m = re.match(r"^(?P<b1>!?)(?P<to>[^!]*)!(?P<pattern>.+)$", stripped)
+    if m:
+        b1 = m.group("b1")
+        to = m.group("to").strip()
+        pat = m.group("pattern").strip()
+        if to and not to.startswith(("/", "./", "../")):
+            scoped_to = f"{scope_str}/{to}"
+        else:
+            scoped_to = to
+        scoped_pat = pat.lstrip("/")
+        new_pat = f"{scope_str}/{scoped_pat}"
+        return f"{b1}{scoped_to}!{new_pat}"
+    else:
+        clean_rule = stripped.lstrip("/")
+        if "/" in clean_rule:
+            return f"{scope_str}/{clean_rule}"
+        else:
+            return f"{scope_str}/**/{clean_rule}"
 
 
 class PresetCatalog(IPresetCatalog):
@@ -118,6 +150,28 @@ class PresetCatalog(IPresetCatalog):
         tier4 = [ScopedRule(rule=r) for r in cli_rules]
 
         return effective_name, self._squeeze_cascade([*tier1, *tier2, *tier3, *tier4])
+
+    def format_bundle(
+        self,
+        source_name: str,
+        preset_name: str,
+        rules: Sequence[str | ScopedRule],
+    ) -> str:
+        """Format resolved cascade rules into a self-contained, standalone .zipignore file string."""
+        lines: list[str] = [
+            f"# .zipignore: self-contained rule bundle for '{source_name}'",
+            f"# base-preset: {preset_name}",
+            "# resolved: 4-tier cascade (preset -> root -> subdir -> cli) & squeezed",
+            "",
+        ]
+        for r in rules:
+            match r:
+                case ScopedRule() as s:
+                    lines.append(flatten_scoped_rule(s))
+                case str() as s:
+                    lines.append(s)
+        lines.append("")
+        return "\n".join(lines)
 
     def _load_root_zipignore(self, source: Path) -> PresetModel | None:
         local_file = source / ".zipignore"

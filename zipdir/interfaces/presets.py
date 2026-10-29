@@ -39,3 +39,11 @@ class IPresetCatalog:
         no_default_rules: bool = False,
     ) -> tuple[str, list[str | ScopedRule]]:
         raise NotImplementedError
+
+    def format_bundle(
+        self,
+        source_name: str,
+        preset_name: str,
+        rules: Sequence[str | ScopedRule],
+    ) -> str:
+        raise NotImplementedError

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 
 from zipdir.models import PresetModel
-from zipdir.presets.base import DEFAULT_PRESET_DIRS
+from zipdir.presets.base import DEFAULT_PRESET_DIRS, flatten_scoped_rule
 from zipdir.presets.cascade import PresetCatalog
 
 
@@ -25,6 +25,7 @@ def discover_sub_zipignores(source: Path) -> list[tuple[PurePosixPath, Path]]:
 
 __all__ = [
     "DEFAULT_PRESET_DIRS",
+    "flatten_scoped_rule",
     "PresetCatalog",
     "discover_sub_zipignores",
     "load_presets",
