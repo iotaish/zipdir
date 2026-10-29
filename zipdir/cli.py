@@ -60,6 +60,7 @@ Rule syntax (.zipignore):
   - '!out/*.pdf'         # Rescue out/*.pdf and lift to exile destination (shallowest excluded parent)
   - '{to}/!out/*.pdf'    # Rescue and move to directory {to}/ relative to exile destination (e.g. 'dist/!out/*.pdf')
   - '{name}!out/file'    # Rescue and rename file to {name} at exile destination (e.g. 'final.pdf!out/report.pdf')
+  - '{pattern}!out/*.ext'# Rescue and dynamically rename via '*' or '$1' (e.g. 'submitted_*.pdf!out/*.pdf')
   - './!out/*.pdf'       # Rescue out/*.pdf keeping original directory hierarchy (階層死守)
   - './{to}/!out/*.pdf'  # Rescue and move to {to}/ relative to original hierarchy / local scope
   - '/{to}/!out/*.pdf'   # Rescue and move to {to}/ relative to archive root
@@ -95,7 +96,7 @@ def package(
             "--rule",
             "-x",
             "--exclude",
-            help="Additional .zipignore rules (exclude, rescue !, re-delete !!); repeatable",
+            help="Additional .zipignore rules (exclude, rescue !, re-delete !!, rename target!source); repeatable",
         ),
     ] = None,
     no_default_rules: Annotated[
