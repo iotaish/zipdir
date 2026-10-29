@@ -8,6 +8,7 @@ from zipdir.ui.base import (
     color_success,
     color_yellow,
     format_size,
+    parse_size,
 )
 from zipdir.ui.verbose import ConsoleReporter
 
@@ -20,4 +21,5 @@ __all__ = [
     "color_success",
     "color_yellow",
     "format_size",
+    "parse_size",
 ]

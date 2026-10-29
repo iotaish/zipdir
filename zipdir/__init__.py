@@ -55,6 +55,7 @@ from zipdir.models import (
     ScopedRule,
     normalize_posix_path,
     normalize_target,
+    parse_size,
     redelete_matches_rescue,
 )
 from zipdir.output import (
@@ -144,6 +145,7 @@ __all__ = [
     "flatten_scoped_rule",
     "evaluate_path",
     "format_size",
+    "parse_size",
     "load_presets",
     "load_raw_zipignore_preset",
     "normalize_posix_path",

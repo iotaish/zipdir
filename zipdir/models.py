@@ -47,6 +47,43 @@ def redelete_matches_rescue(redelete_target: str, rescued_target: str | None) ->
             return normalize_target(redelete_target) == normalize_target(target)
 
 
+def parse_size(size_str: str) -> int:
+    """Parse a human-readable size string (e.g. 10MB, 500KB, 1G, 1024) into bytes."""
+    s = size_str.strip().upper()
+    m = re.match(r"^([0-9]+(?:\.[0-9]+)?)\s*([A-Z]*)$", s)
+    if not m:
+        raise ValueError(f"Invalid size string '{size_str}' (e.g. 10MB, 500KB, 1G)")
+    num = float(m.group(1))
+    unit = m.group(2)
+    multipliers = {
+        "": 1,
+        "B": 1,
+        "K": 1024,
+        "KB": 1024,
+        "M": 1024**2,
+        "MB": 1024**2,
+        "G": 1024**3,
+        "GB": 1024**3,
+    }
+    if unit not in multipliers:
+        raise ValueError(f"Unknown size unit '{unit}' in '{size_str}'. Supported: B, KB, MB, GB")
+    return int(num * multipliers[unit])
+
+
+def format_size(num_bytes: int | float) -> str:
+    """Format byte size into human-readable units."""
+    size = float(num_bytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024.0:
+            match unit:
+                case "B":
+                    return f"{int(size)} B"
+                case _:
+                    return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} TB"
+
+
 def normalize_posix_path(path: PurePosixPath) -> PurePosixPath:
     """Resolve '.' and '..' segments within a relative PurePosixPath."""
     stack: list[str] = []
@@ -321,3 +358,6 @@ class PackagerConfig(BaseModel):
     dry_run: bool = False
     force: bool = False
     verbose: bool = False
+    max_size: int | None = None
+    check_empty: bool = False
+    strict_rescue: bool = False

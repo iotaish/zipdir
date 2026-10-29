@@ -7,6 +7,8 @@ from pathlib import Path
 
 from zipdir.interfaces.ui import IReporter
 from zipdir.models import PackagerConfig, PathExplanation, PresetModel
+from zipdir.models import format_size as format_size
+from zipdir.models import parse_size as parse_size
 
 USE_COLOR = sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
 
@@ -37,20 +39,6 @@ def color_cyan(text: str) -> str:
 
 def color_yellow(text: str) -> str:
     return _c(text, "33")
-
-
-def format_size(num_bytes: int | float) -> str:
-    """Format byte size into human-readable units."""
-    size = float(num_bytes)
-    for unit in ("B", "KB", "MB", "GB"):
-        if size < 1024.0:
-            match unit:
-                case "B":
-                    return f"{int(size)} B"
-                case _:
-                    return f"{size:.1f} {unit}"
-        size /= 1024.0
-    return f"{size:.1f} TB"
 
 
 class ConsoleReporter(IReporter):
