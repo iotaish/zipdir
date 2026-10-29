@@ -121,10 +121,12 @@ alias zipd='zipdir'
     dist/!build/release/bin/*
     app!build/release/bin/app
     final.pdf!out/report.pdf
+    submitted_*.pdf!out/*.pdf
     /submission.pdf!out/report.pdf
     ```
 
   - ファイルシステム上の元ディレクトリ構造やビルド成果物の名前を汚すことなく、ZIP 内部での配置先およびファイル名のみを柔軟に制御してアーカイブ化できます。
+  - ワイルドカードにマッチした複数ファイルに接頭辞・接尾辞を一括付与したい場合は、ターゲット側に `*` または `$1` プレースホルダ（例: `submitted_*.pdf!out/*.pdf` や `v1_*!dist/*.bin`）を記述することで、複数ファイルが 1 つに集約（メンバー貪食）されることなく、マッチしたファイル名幹（stem）を展開して個別リネーム救出できます。
 
 ## 3. 特徴
 
@@ -166,6 +168,7 @@ alias zipd='zipdir'
 | `!out/*.pdf` | 亡命救出 (RESCUE, 省略) | `out` は除外するが、配下の PDF を亡命先（除外され尽くした親階層）へリフトして救出 |
 | `dist/!out/*.pdf` | 亡命先相対ディレクトリリマップ | 亡命先（除外され尽くした親階層）を基準として `dist/` 配下へ救出・配置（末尾 `/` 必須） |
 | `final.pdf!out/report.pdf` | 亡命先ファイルリネーム | 亡命先を基準としてファイル名を `final.pdf` に変更して救出（末尾 `/` なしはリネーム扱い） |
+| `submitted_*.pdf!out/*.pdf` | 動的テンプレートリネーム | ターゲットに `*` または `$1` を含め、マッチした幹を展開して個別リネーム救出 |
 | `app!build/release/bin` | 亡命先ファイルリネーム (拡張子なし) | 拡張子のない実行バイナリ等のファイル名を `app` に変更して救出 |
 | `dist/final.pdf!out/*.pdf` | ディレクトリ配置 + リネーム | 亡命先の `dist/` ディレクトリ配下に `final.pdf` としてリネーム配置 |
 | `./!out/*.pdf` | 階層死守 (RESCUE, `./`) | `out` は除外するが、`out/` 配下の階層構造を完全に維持したまま PDF を救出 |
@@ -262,7 +265,7 @@ zipdir -r '*.bak' -r 'dist/!*.csv' -r 'final.pdf!out/report.pdf'
 - `-t, --timestamp`: 出力ファイル名にタイムスタンプ（`_YYYYMMDD_HHMMSS`）を付与（既定: `False`、未指定・ディレクトリ指定時の重複時は自動フォールバック）
 - `-p, --preset <name|path>`: 使用するプリセット名または `.zipignore` ファイルパスを指定（既定: `clean`）
 - `--list-presets`: 利用可能なプリセット一覧を表示して終了
-- `-r, --rule, -x, --exclude <rule>`: 追加のルール（除外・救出・再除外）を指定（複数指定可）
+- `-r, --rule, -x, --exclude <rule>`: 追加のルール（除外・救出・再除外・動的リネーム）を指定（複数指定可、`-r` / `--rule` 推奨）
 - `--no-default-rules`: プリセットのルールを一切適用しない
 - `--name <name>`: アーカイブのルートディレクトリ名および既定のプレフィックスを指定
 - `--flat`: ZIP 内部に最上位の親ディレクトリを含めず、直下に展開されるようにフラット化
