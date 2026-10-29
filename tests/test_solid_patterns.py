@@ -85,6 +85,7 @@ from zipdir import (
     RuleKind,
     SymlinkArchiveWriter,
     TargetedRedeleteSqueezeStrategy,
+    TemplateRenameRemapStrategy,
     ZipPackager,
     compile_rule,
 )
@@ -302,6 +303,7 @@ class TestInterfacesDirectoryAndProgressiveInheritance:
             (IRuleTransition, ExcludeTransition, ["apply"]),
             (IRuleTransition, RescueTransition, ["apply"]),
             (IRuleTransition, RedeleteTransition, ["apply"]),
+            (IRemapStrategy, TemplateRenameRemapStrategy, ["matches", "remap"]),
             (IRemapStrategy, PreserveHierarchyRemapStrategy, ["matches", "remap"]),
             (IRemapStrategy, ArchiveRootRemapStrategy, ["matches", "remap"]),
             (IRemapStrategy, LocalScopeRemapStrategy, ["matches", "remap"]),
@@ -553,6 +555,7 @@ class TestBridgeAndStrategyPatterns:
 
         for s_cls in (
             PreserveHierarchyRemapStrategy,
+            TemplateRenameRemapStrategy,
             ArchiveRootRemapStrategy,
             LocalScopeRemapStrategy,
             ParentClimbRemapStrategy,

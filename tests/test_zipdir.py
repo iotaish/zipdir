@@ -362,12 +362,96 @@ class TestPathEvaluation:
         assert arc7 is None
         assert m7 is not None and m7.kind == RuleKind.REDELETE
 
+    def test_dynamic_template_rename_with_wildcards(self) -> None:
+        """When target contains '*' or '$1', wildcards are dynamically expanded without phagocytosis."""
+        # 1. Asterisk template expansion: submitted_*.pdf!out/*.pdf
+        rules1 = [
+            compile_rule("out/") or pytest.fail("rule failed"),
+            compile_rule("submitted_*.pdf!out/*.pdf") or pytest.fail("rule failed"),
+        ]
+        exc1, arc1, m1 = evaluate_path(PurePosixPath("out/alice.pdf"), False, rules1)
+        assert not exc1
+        assert arc1 == PurePosixPath("submitted_alice.pdf")
+        assert m1 is not None and m1.target == "submitted_*.pdf"
+
+        exc2, arc2, _ = evaluate_path(PurePosixPath("out/bob.pdf"), False, rules1)
+        assert not exc2
+        assert arc2 == PurePosixPath("submitted_bob.pdf")
+
+        # 2. Numbered capture group $1: v1_$1.bin!dist/*.bin
+        rules2 = [
+            compile_rule("dist/") or pytest.fail("rule failed"),
+            compile_rule("v1_$1.bin!dist/*.bin") or pytest.fail("rule failed"),
+        ]
+        exc3, arc3, _ = evaluate_path(PurePosixPath("dist/server.bin"), False, rules2)
+        assert not exc3
+        assert arc3 == PurePosixPath("v1_server.bin")
+
+        # 3. Multiple capture groups $1, $2: archive_$1_$2.csv!data/*_*.csv
+        rules3 = [
+            compile_rule("data/") or pytest.fail("rule failed"),
+            compile_rule("archive_$1_$2.csv!data/*_*.csv") or pytest.fail("rule failed"),
+        ]
+        exc4, arc4, _ = evaluate_path(PurePosixPath("data/2026_sales.csv"), False, rules3)
+        assert not exc4
+        assert arc4 == PurePosixPath("archive_2026_sales.csv")
+
+        # 4. Dynamic template with archive root coordinate: /release/pkg_*.tar.gz!dist/*.tar.gz
+        rules4 = [
+            compile_rule("dist/") or pytest.fail("rule failed"),
+            compile_rule("/release/pkg_*.tar.gz!dist/*.tar.gz") or pytest.fail("rule failed"),
+        ]
+        exc5, arc5, _ = evaluate_path(PurePosixPath("dist/app.tar.gz"), False, rules4)
+        assert not exc5
+        assert arc5 == PurePosixPath("release/pkg_app.tar.gz")
+
+        # 5. Dynamic template with local scope coordinate: ./backup_*.log!logs/*.log
+        rules5 = [
+            compile_rule("logs/") or pytest.fail("rule failed"),
+            compile_rule("./backup_*.log!logs/*.log") or pytest.fail("rule failed"),
+        ]
+        exc6, arc6, _ = evaluate_path(PurePosixPath("logs/error.log"), False, rules5)
+        assert not exc6
+        assert arc6 == PurePosixPath("logs/backup_error.log")
+
 
 # ==============================================================================
 # 3. End-to-End Packaging & Integration Tests
 # ==============================================================================
 class TestPackagerIntegration:
     """Tests complete ZIP archive creation and verify namelist."""
+
+    def test_dynamic_template_rename_packaging_prevents_phagocytosis(self, tmp_path: Path) -> None:
+        """Verifies that dynamic template renaming packages multiple matching files without collision."""
+        import zipfile
+
+        source = tmp_path / "project"
+        source.mkdir()
+        out_dir = source / "out"
+        out_dir.mkdir()
+        (out_dir / "alice.pdf").write_text("alice content", encoding="utf-8")
+        (out_dir / "bob.pdf").write_text("bob content", encoding="utf-8")
+        (source / "main.py").write_text("print('hello')", encoding="utf-8")
+
+        zip_out = tmp_path / "archive.zip"
+        config = PackagerConfig(
+            source=source,
+            output=zip_out,
+            name="bundle",
+            preset_name="none",
+            rules=("out/", "submitted_*.pdf!out/*.pdf"),
+        )
+        packager = ZipPackager(config)
+        packager.package()
+
+        assert zip_out.exists()
+        with zipfile.ZipFile(zip_out, "r") as zf:
+            names = set(zf.namelist())
+            assert "bundle/main.py" in names
+            assert "bundle/submitted_alice.pdf" in names
+            assert "bundle/submitted_bob.pdf" in names
+            assert zf.read("bundle/submitted_alice.pdf").decode("utf-8") == "alice content"
+            assert zf.read("bundle/submitted_bob.pdf").decode("utf-8") == "bob content"
 
     def test_full_packaging_with_all_syntax(self, tmp_path: Path) -> None:
         """Verifies full archive creation exercising exclude, exile, keep, remap, re-delete, and lift."""
